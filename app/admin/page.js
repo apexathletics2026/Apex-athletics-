@@ -17,6 +17,8 @@ export default function AdminPage() {
   const [upi, setUpi] = useState({ upi_id: "", qr_image_url: "" });
   const [qrFile, setQrFile] = useState(null);
   const [savingUpi, setSavingUpi] = useState(false);
+  const [footer, setFooter] = useState({ phone: "", email: "", instagram: "", facebook: "", whatsapp: "" });
+  const [savingFooter, setSavingFooter] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -40,6 +42,16 @@ export default function AdminPage() {
     setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []);
     const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
     if (s?.value) setUpi(s.value);
+    const { data: f } = await supabase.from("website_settings").select("value").eq("key", "footer_contact").maybeSingle();
+    if (f?.value) setFooter(f.value);
+  };
+
+  const saveFooter = async (patch) => {
+    setSavingFooter(true);
+    const next = { ...footer, ...patch };
+    await supabase.from("website_settings").upsert({ key: "footer_contact", value: next });
+    setFooter(next);
+    setSavingFooter(false);
   };
 
   const saveUpi = async (patch) => {
@@ -93,19 +105,19 @@ export default function AdminPage() {
       <div className="max-w-sm mx-auto px-5 py-20 text-center">
         <ShieldCheck size={28} color="#FF5A1F" className="mx-auto mb-4" />
         <h1 className="font-black text-xl mb-2 text-ink">Not Authorized</h1>
-        <p className="text-sm text-muted">This account isn't in the admins list.</p>
+        <p className="text-sm text-muted">This account isn't in the admins list. See MANUAL_SETUP.md for how to add yourself as admin.</p>
       </div>
     );
   }
 
-  const tabs = ["overview", "events", "products", "sponsors", "registrations", "payment settings"];
+  const tabs = ["overview", "events", "products", "sponsors", "registrations", "payment settings", "site settings"];
   const stats = [
     ["Total Events", events.length],
     ["Registrations", registrations.length],
     ["Products", products.length],
     ["Sponsors", sponsors.length],
     ["Open Events", events.filter(e => e.status === "Registration Open").length],
-    ["Pending Payments", registrations.filter(r => r.status === "Pending Payment" || r.status === "Payment Submitted").length],
+    ["Pending Payments", registrations.filter(r => r.status === "Pending Payment").length],
   ];
 
   return (
@@ -194,8 +206,7 @@ export default function AdminPage() {
             <div key={r.id} className="border rounded-sm p-4 flex flex-wrap items-center gap-4 justify-between" style={{ borderColor: "#E7E2D9" }}>
               <div>
                 <div className="font-black text-sm">{r.registration_code} — {r.full_name}</div>
-                <div className="text-xs text-muted">{r.events?.name} · {r.mobile} · {r.email}</div>
-                <div className="text-xs text-muted">City: {r.city}, {r.state} · T-shirt: {r.tshirt_size}</div>
+                <div className="text-xs text-muted">{r.events?.name} · {r.mobile}</div>
                 <div className="text-xs font-bold mt-1" style={{ color: r.status === "Confirmed" ? "#1B7A3B" : "#C43D0E" }}>{r.status}</div>
               </div>
               <div className="flex items-center gap-3">
@@ -222,7 +233,9 @@ export default function AdminPage() {
           <p className="text-sm text-muted mb-6">This UPI ID and QR code show up on the registration payment step until Razorpay is connected.</p>
           <div className="mb-5">
             <label className="field-label">UPI ID</label>
-            <input className="field-input" defaultValue={upi.upi_id} onBlur={(e) => saveUpi({ upi_id: e.target.value })} placeholder="yourname@upi" />
+            <div className="flex gap-2">
+              <input className="field-input" defaultValue={upi.upi_id} onBlur={(e) => saveUpi({ upi_id: e.target.value })} placeholder="yourname@upi" />
+            </div>
           </div>
           <div className="mb-5">
             <label className="field-label">QR Code Image</label>
@@ -233,6 +246,18 @@ export default function AdminPage() {
             </label>
             {qrFile && <button disabled={savingUpi} onClick={uploadQr} className="btn btn-primary !w-full mt-3">{savingUpi ? "Uploading…" : "Upload & Save"}</button>}
           </div>
+        </div>
+      )}
+
+      {tab === "site settings" && (
+        <div className="max-w-md space-y-5">
+          <p className="text-sm text-muted mb-2">These show in the website footer and power the WhatsApp chat button.</p>
+          <div><label className="field-label">Phone</label><input className="field-input" defaultValue={footer.phone} onBlur={(e) => saveFooter({ phone: e.target.value })} placeholder="+91 90000 00000" /></div>
+          <div><label className="field-label">Email</label><input className="field-input" defaultValue={footer.email} onBlur={(e) => saveFooter({ email: e.target.value })} placeholder="info@apexathletics.run" /></div>
+          <div><label className="field-label">Instagram URL</label><input className="field-input" defaultValue={footer.instagram} onBlur={(e) => saveFooter({ instagram: e.target.value })} placeholder="https://instagram.com/..." /></div>
+          <div><label className="field-label">Facebook URL</label><input className="field-input" defaultValue={footer.facebook} onBlur={(e) => saveFooter({ facebook: e.target.value })} placeholder="https://facebook.com/..." /></div>
+          <div><label className="field-label">WhatsApp Number (country code, no + or spaces)</label><input className="field-input" defaultValue={footer.whatsapp} onBlur={(e) => saveFooter({ whatsapp: e.target.value })} placeholder="919876543210" /></div>
+          {savingFooter && <p className="text-xs text-muted">Saving…</p>}
         </div>
       )}
     </div>
@@ -258,4 +283,4 @@ function SF({ label, value, onChange, options }) {
       </select>
     </div>
   );
-                       }
+                    }
