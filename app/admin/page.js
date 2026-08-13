@@ -1,502 +1,261 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ShieldCheck, Plus, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-
-const TABS = ["Events", "Products", "Sponsors", "Registrations"];
 
 export default function AdminPage() {
   const supabase = createClient();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [tab, setTab] = useState("Events");
+  const [tab, setTab] = useState("overview");
+  const [events, setEvents] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [sponsors, setSponsors] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
+  const [upi, setUpi] = useState({ upi_id: "", qr_image_url: "" });
+  const [qrFile, setQrFile] = useState(null);
+  const [savingUpi, setSavingUpi] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-      const { data } = await supabase
-        .from("admins")
-        .select("id")
-        .eq("email", user.email)
-        .maybeSingle();
-      setIsAdmin(!!data);
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user) { router.push("/login"); return; }
+      const { data: adminRow } = await supabase.from("admins").select("id").eq("id", u.user.id).maybeSingle();
+      if (!adminRow) { setChecking(false); setIsAdmin(false); return; }
+      setIsAdmin(true);
       setChecking(false);
+      await loadAll();
     })();
   }, []);
 
-  if (checking) {
-    return <div className="px-5 py-20 text-center text-muted">Checking access…</div>;
-  }
+  const loadAll = async () => {
+    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }] = await Promise.all([
+      supabase.from("events").select("*").order("event_date"),
+      supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase.from("sponsors").select("*").order("sort_order"),
+      supabase.from("event_registrations").select("*, events(name)").order("created_at", { ascending: false }),
+    ]);
+    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []);
+    const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
+    if (s?.value) setUpi(s.value);
+  };
+
+  const saveUpi = async (patch) => {
+    setSavingUpi(true);
+    const next = { ...upi, ...patch };
+    await supabase.from("website_settings").upsert({ key: "upi_payment", value: next });
+    setUpi(next);
+    setSavingUpi(false);
+  };
+
+  const uploadQr = async () => {
+    if (!qrFile) return;
+    setSavingUpi(true);
+    const path = `qr-${Date.now()}.${qrFile.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, qrFile);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      await saveUpi({ qr_image_url: pub.publicUrl });
+    }
+    setQrFile(null);
+    setSavingUpi(false);
+  };
+
+  const approveRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Confirmed" }).eq("id", id); loadAll(); };
+  const rejectRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Pending Payment" }).eq("id", id); loadAll(); };
+
+  const addEvent = async () => {
+    const slug = `event-${Date.now()}`;
+    await supabase.from("events").insert({ slug, name: "New Event", category: "Running", event_date: "2026-12-01", fee: 500, max_participants: 500, status: "Draft" });
+    loadAll();
+  };
+  const updateEvent = async (id, patch) => { await supabase.from("events").update(patch).eq("id", id); loadAll(); };
+  const deleteEvent = async (id) => { await supabase.from("events").delete().eq("id", id); loadAll(); };
+
+  const addProduct = async () => {
+    const slug = `product-${Date.now()}`;
+    await supabase.from("products").insert({ slug, name: "New Product", price: 999, status: "Draft" });
+    loadAll();
+  };
+  const updateProduct = async (id, patch) => { await supabase.from("products").update(patch).eq("id", id); loadAll(); };
+  const deleteProduct = async (id) => { await supabase.from("products").delete().eq("id", id); loadAll(); };
+
+  const addSponsor = async () => { await supabase.from("sponsors").insert({ name: "New Sponsor", category: "Partner" }); loadAll(); };
+  const updateSponsor = async (id, patch) => { await supabase.from("sponsors").update(patch).eq("id", id); loadAll(); };
+  const deleteSponsor = async (id) => { await supabase.from("sponsors").delete().eq("id", id); loadAll(); };
+
+  if (checking) return <div className="max-w-6xl mx-auto px-5 py-20 text-center text-muted">Checking access…</div>;
 
   if (!isAdmin) {
     return (
       <div className="max-w-sm mx-auto px-5 py-20 text-center">
-        <h1 className="font-black text-xl mb-2 text-ink">Access denied</h1>
-        <p className="text-sm text-muted">This account is not an admin.</p>
+        <ShieldCheck size={28} color="#FF5A1F" className="mx-auto mb-4" />
+        <h1 className="font-black text-xl mb-2 text-ink">Not Authorized</h1>
+        <p className="text-sm text-muted">This account isn't in the admins list.</p>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-4xl mx-auto px-5 py-10">
-      <div className="text-xs font-bold tracking-[0.2em] uppercase text-accentDark mb-3">
-        Control Center
-      </div>
-      <h1 className="font-black text-2xl mb-6 text-ink">Admin Panel</h1>
+  const tabs = ["overview", "events", "products", "sponsors", "registrations", "payment settings"];
+  const stats = [
+    ["Total Events", events.length],
+    ["Registrations", registrations.length],
+    ["Products", products.length],
+    ["Sponsors", sponsors.length],
+    ["Open Events", events.filter(e => e.status === "Registration Open").length],
+    ["Pending Payments", registrations.filter(r => r.status === "Pending Payment" || r.status === "Payment Submitted").length],
+  ];
 
-      <div className="flex gap-2 mb-8 flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wide transition ${
-              tab === t ? "bg-accentDark text-white" : "bg-gray-100 text-muted"
-            }`}
-          >
+  return (
+    <div className="max-w-6xl mx-auto px-5 py-10">
+      <div className="flex items-center gap-2 mb-8"><ShieldCheck size={20} color="#FF5A1F"/><h1 className="font-black text-2xl text-ink">Admin Panel</h1></div>
+      <div className="flex gap-2 mb-8 overflow-x-auto">
+        {tabs.map((t) => (
+          <button key={t} onClick={() => setTab(t)} className="text-xs font-bold uppercase tracking-wide px-4 py-2 rounded-full border whitespace-nowrap"
+            style={{ borderColor: tab === t ? "#FF5A1F" : "#E7E2D9", background: tab === t ? "#FF5A1F" : "transparent", color: tab === t ? "#fff" : "#15130F" }}>
             {t}
           </button>
         ))}
       </div>
 
-      {tab === "Events" && <EventsPanel supabase={supabase} />}
-      {tab === "Products" && <ProductsPanel supabase={supabase} />}
-      {tab === "Sponsors" && <SponsorsPanel supabase={supabase} />}
-      {tab === "Registrations" && <RegistrationsPanel supabase={supabase} />}
+      {tab === "overview" && (
+        <div className="grid sm:grid-cols-3 gap-4">
+          {stats.map(([label, value]) => (
+            <div key={label} className="border rounded-sm p-5" style={{ borderColor: "#E7E2D9" }}>
+              <div className="text-2xl font-black text-ink">{value}</div>
+              <div className="text-xs uppercase font-bold text-muted">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "events" && (
+        <div>
+          <button className="btn btn-primary mb-5" onClick={addEvent}><Plus size={15}/> Add Event</button>
+          <div className="space-y-3">
+            {events.map((e) => (
+              <div key={e.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                  <TF label="Name" value={e.name} onBlur={(v) => updateEvent(e.id, { name: v })} />
+                  <SF label="Status" value={e.status} onChange={(v) => updateEvent(e.id, { status: v })} options={["Draft", "Registration Open", "Registration Closed", "Upcoming", "Completed", "Cancelled"]} />
+                  <TF label="Date" type="date" value={e.event_date} onBlur={(v) => updateEvent(e.id, { event_date: v })} />
+                  <TF label="Fee (₹)" type="number" value={e.fee} onBlur={(v) => updateEvent(e.id, { fee: Number(v) })} />
+                </div>
+                <button onClick={() => deleteEvent(e.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "products" && (
+        <div>
+          <button className="btn btn-primary mb-5" onClick={addProduct}><Plus size={15}/> Add Product</button>
+          <div className="space-y-3">
+            {products.map((p) => (
+              <div key={p.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                  <TF label="Name" value={p.name} onBlur={(v) => updateProduct(p.id, { name: v })} />
+                  <TF label="Price (₹)" type="number" value={p.price} onBlur={(v) => updateProduct(p.id, { price: Number(v) })} />
+                  <SF label="Status" value={p.status} onChange={(v) => updateProduct(p.id, { status: v })} options={["Draft", "Active", "Out of Stock", "Archived"]} />
+                  <label className="flex items-center gap-2 text-xs font-bold mt-6 text-ink">
+                    <input type="checkbox" checked={p.featured} onChange={(e) => updateProduct(p.id, { featured: e.target.checked })} /> Featured
+                  </label>
+                </div>
+                <button onClick={() => deleteProduct(p.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "sponsors" && (
+        <div>
+          <button className="btn btn-primary mb-5" onClick={addSponsor}><Plus size={15}/> Add Sponsor</button>
+          <div className="space-y-3">
+            {sponsors.map((s) => (
+              <div key={s.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                  <TF label="Name" value={s.name} onBlur={(v) => updateSponsor(s.id, { name: v })} />
+                  <SF label="Category" value={s.category} onChange={(v) => updateSponsor(s.id, { category: v })} options={["Title Sponsor", "Gold Sponsor", "Silver Sponsor", "Partner", "Supporting Partner", "Media Partner"]} />
+                </div>
+                <button onClick={() => deleteSponsor(s.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "registrations" && (
+        <div className="space-y-3">
+          {registrations.map((r) => (
+            <div key={r.id} className="border rounded-sm p-4 flex flex-wrap items-center gap-4 justify-between" style={{ borderColor: "#E7E2D9" }}>
+              <div>
+                <div className="font-black text-sm">{r.registration_code} — {r.full_name}</div>
+                <div className="text-xs text-muted">{r.events?.name} · {r.mobile} · {r.email}</div>
+                <div className="text-xs text-muted">City: {r.city}, {r.state} · T-shirt: {r.tshirt_size}</div>
+                <div className="text-xs font-bold mt-1" style={{ color: r.status === "Confirmed" ? "#1B7A3B" : "#C43D0E" }}>{r.status}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                {r.payment_screenshot_url && (
+                  <a href={r.payment_screenshot_url} target="_blank" rel="noreferrer">
+                    <img src={r.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
+                  </a>
+                )}
+                {r.status !== "Confirmed" && (
+                  <button onClick={() => approveRegistration(r.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
+                )}
+                {r.status === "Confirmed" && (
+                  <button onClick={() => rejectRegistration(r.id)} className="btn btn-outline !py-2 !px-4 !text-xs">Undo</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {registrations.length === 0 && <p className="text-sm text-muted">No registrations yet.</p>}
+        </div>
+      )}
+
+      {tab === "payment settings" && (
+        <div className="max-w-md">
+          <p className="text-sm text-muted mb-6">This UPI ID and QR code show up on the registration payment step until Razorpay is connected.</p>
+          <div className="mb-5">
+            <label className="field-label">UPI ID</label>
+            <input className="field-input" defaultValue={upi.upi_id} onBlur={(e) => saveUpi({ upi_id: e.target.value })} placeholder="yourname@upi" />
+          </div>
+          <div className="mb-5">
+            <label className="field-label">QR Code Image</label>
+            {upi.qr_image_url && <img src={upi.qr_image_url} alt="Current QR" className="w-32 h-32 border mb-3" style={{ borderColor: "#E7E2D9" }} />}
+            <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-6 text-sm cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+              <Upload size={16}/> {qrFile ? qrFile.name : "Tap to choose a QR code image"}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => setQrFile(e.target.files?.[0] || null)} />
+            </label>
+            {qrFile && <button disabled={savingUpi} onClick={uploadQr} className="btn btn-primary !w-full mt-3">{savingUpi ? "Uploading…" : "Upload & Save"}</button>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ---------- shared field helpers ---------- */
-
-function Field({ label, value, onChange, type = "text" }) {
+function TF({ label, value, onBlur, type = "text" }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
   return (
     <div>
       <label className="field-label">{label}</label>
-      <input
-        type={type}
-        className="field-input"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <input type={type} value={v} onChange={(e) => setV(e.target.value)} onBlur={() => onBlur(v)} className="field-input" />
     </div>
   );
 }
-
-function TextArea({ label, value, onChange }) {
+function SF({ label, value, onChange, options }) {
   return (
     <div>
       <label className="field-label">{label}</label>
-      <textarea
-        className="field-input"
-        rows={3}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="field-input">
+        {options.map((o) => <option key={o}>{o}</option>)}
+      </select>
     </div>
   );
-}
-
-function Checkbox({ label, checked, onChange }) {
-  return (
-    <label className="flex items-center gap-2 text-sm text-ink">
-      <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} />
-      {label}
-    </label>
-  );
-}
-
-/* ---------- Events ---------- */
-
-function emptyEvent() {
-  return {
-    name: "", slug: "", category: "", description: "",
-    event_date: "", start_time: "", reg_open_date: "", reg_close_date: "",
-    location: "", city: "", district: "", state: "", country: "", distance: "",
-    fee: "", max_participants: "", status: "Registration Open", banner_url: "",
-    race_categories: "",
-    rules: "", terms: "", prize_info: "", organizer_info: "", contact_info: "",
-  };
-}
-
-function EventsPanel({ supabase }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(emptyEvent());
-  const [editingId, setEditingId] = useState(null);
-
-  const load = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from("events").select("*").order("event_date", { ascending: false });
-    if (error) alert("Load failed: " + error.message);
-    setItems(data || []);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
-
-  const save = async () => {
-    const payload = {
-      ...form,
-      fee: form.fee === "" ? null : Number(form.fee),
-      max_participants: form.max_participants === "" ? null : Number(form.max_participants),
-    };
-    const { error } = editingId
-      ? await supabase.from("events").update(payload).eq("id", editingId)
-      : await supabase.from("events").insert(payload);
-    if (error) { alert("Save failed: " + error.message); return; }
-    setForm(emptyEvent());
-    setEditingId(null);
-    load();
-  };
-
-  const edit = (item) => { setForm({ ...emptyEvent(), ...item }); setEditingId(item.id); };
-  const remove = async (id) => {
-    if (confirm("Delete this event? This cannot be undone.")) {
-      const { error } = await supabase.from("events").delete().eq("id", id);
-      if (error) { alert("Delete failed: " + error.message); return; }
-      load();
-    }
-  };
-
-  return (
-    <div>
-      <div className="border rounded-xl p-4 mb-6 space-y-3">
-        <h2 className="font-bold text-sm text-ink">{editingId ? "Edit Event" : "Add New Event"}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-          <Field label="Slug" value={form.slug} onChange={(v) => setForm({ ...form, slug: v })} />
-          <Field label="Category" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
-          <div>
-            <label className="field-label">Status</label>
-            <select className="field-input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              <option value="Registration Open">Registration Open</option>
-              <option value="Registration Closed">Registration Closed</option>
-              <option value="Draft">Draft</option>
-              <option value="Completed">Completed</option>
-            </select>
-          </div>
-          <Field label="Event Date" type="date" value={form.event_date} onChange={(v) => setForm({ ...form, event_date: v })} />
-          <Field label="Fee (₹)" type="number" value={form.fee} onChange={(v) => setForm({ ...form, fee: v })} />
-          <Field label="City" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
-          <Field label="Banner URL" value={form.banner_url} onChange={(v) => setForm({ ...form, banner_url: v })} />
-          <Field label="Race Categories (comma separated, e.g. 5K, 10K, 21K)" value={form.race_categories} onChange={(v) => setForm({ ...form, race_categories: v })} />
-        </div>
-        <TextArea label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
-
-        <details className="text-sm border-t pt-3">
-          <summary className="cursor-pointer font-bold text-accentDark">+ More details (optional)</summary>
-          <div className="space-y-3 mt-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Start Time" value={form.start_time} onChange={(v) => setForm({ ...form, start_time: v })} />
-              <Field label="Reg Open Date" type="date" value={form.reg_open_date} onChange={(v) => setForm({ ...form, reg_open_date: v })} />
-              <Field label="Reg Close Date" type="date" value={form.reg_close_date} onChange={(v) => setForm({ ...form, reg_close_date: v })} />
-              <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} />
-              <Field label="District" value={form.district} onChange={(v) => setForm({ ...form, district: v })} />
-              <Field label="State" value={form.state} onChange={(v) => setForm({ ...form, state: v })} />
-              <Field label="Country" value={form.country} onChange={(v) => setForm({ ...form, country: v })} />
-              <Field label="Distance" value={form.distance} onChange={(v) => setForm({ ...form, distance: v })} />
-              <Field label="Max Participants" type="number" value={form.max_participants} onChange={(v) => setForm({ ...form, max_participants: v })} />
-            </div>
-            <TextArea label="Rules" value={form.rules} onChange={(v) => setForm({ ...form, rules: v })} />
-            <TextArea label="Terms" value={form.terms} onChange={(v) => setForm({ ...form, terms: v })} />
-            <TextArea label="Prize Info" value={form.prize_info} onChange={(v) => setForm({ ...form, prize_info: v })} />
-            <TextArea label="Organizer Info" value={form.organizer_info} onChange={(v) => setForm({ ...form, organizer_info: v })} />
-            <TextArea label="Contact Info" value={form.contact_info} onChange={(v) => setForm({ ...form, contact_info: v })} />
-          </div>
-        </details>
-
-        <div className="flex gap-2">
-          <button className="btn btn-primary" onClick={save}>
-            {editingId ? "Update Event" : "Create Event"}
-          </button>
-          {editingId && (
-            <button className="btn" onClick={() => { setForm(emptyEvent()); setEditingId(null); }}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((it) => (
-            <div key={it.id} className="flex items-center justify-between border rounded-lg px-4 py-3">
-              <div>
-                <p className="font-bold text-sm text-ink">{it.name}</p>
-                <p className="text-xs text-muted">{it.event_date} · {it.status}</p>
-              </div>
-              <div className="flex gap-3">
-                <button className="text-xs font-bold text-accentDark" onClick={() => edit(it)}>Edit</button>
-                <button className="text-xs font-bold" style={{ color: "#B3271E" }} onClick={() => remove(it.id)}>Delete</button>
-              </div>
-            </div>
-          ))}
-          {items.length === 0 && <p className="text-sm text-muted">No events yet.</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------- Products ---------- */
-
-function emptyProduct() {
-  return { name: "", slug: "", description: "", price: "", discount_price: "", sku: "", stock: "", category: "", featured: false, status: "active" };
-}
-
-function ProductsPanel({ supabase }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(emptyProduct());
-  const [editingId, setEditingId] = useState(null);
-
-  const load = async () => {
-    setLoading(true);
-    const { data } = await supabase.from("products").select("*").order("created_at", { ascending: false });
-    setItems(data || []);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
-
-  const save = async () => {
-    const payload = {
-      ...form,
-      price: form.price === "" ? null : Number(form.price),
-      discount_price: form.discount_price === "" ? null : Number(form.discount_price),
-      stock: form.stock === "" ? null : Number(form.stock),
-    };
-    if (editingId) {
-      await supabase.from("products").update(payload).eq("id", editingId);
-    } else {
-      await supabase.from("products").insert(payload);
-    }
-    setForm(emptyProduct());
-    setEditingId(null);
-    load();
-  };
-
-  const edit = (item) => { setForm({ ...emptyProduct(), ...item }); setEditingId(item.id); };
-  const remove = async (id) => {
-    if (confirm("Delete this product?")) {
-      await supabase.from("products").delete().eq("id", id);
-      load();
-    }
-  };
-
-  return (
-    <div>
-      <div className="border rounded-xl p-4 mb-6 space-y-3">
-        <h2 className="font-bold text-sm text-ink">{editingId ? "Edit Product" : "Add New Product"}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-          <Field label="Slug" value={form.slug} onChange={(v) => setForm({ ...form, slug: v })} />
-          <Field label="Price (₹)" type="number" value={form.price} onChange={(v) => setForm({ ...form, price: v })} />
-          <Field label="Discount Price (₹)" type="number" value={form.discount_price} onChange={(v) => setForm({ ...form, discount_price: v })} />
-          <Field label="SKU" value={form.sku} onChange={(v) => setForm({ ...form, sku: v })} />
-          <Field label="Stock" type="number" value={form.stock} onChange={(v) => setForm({ ...form, stock: v })} />
-          <Field label="Category" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
-          <Field label="Status" value={form.status} onChange={(v) => setForm({ ...form, status: v })} />
-        </div>
-        <TextArea label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
-        <Checkbox label="Featured" checked={form.featured} onChange={(v) => setForm({ ...form, featured: v })} />
-        <div className="flex gap-2">
-          <button className="btn btn-primary" onClick={save}>
-            {editingId ? "Update Product" : "Create Product"}
-          </button>
-          {editingId && (
-            <button className="btn" onClick={() => { setForm(emptyProduct()); setEditingId(null); }}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((it) => (
-            <div key={it.id} className="flex items-center justify-between border rounded-lg px-4 py-3">
-              <div>
-                <p className="font-bold text-sm text-ink">{it.name}</p>
-                <p className="text-xs text-muted">₹{it.price} · stock {it.stock} · {it.status}</p>
-              </div>
-              <div className="flex gap-3">
-                <button className="text-xs font-bold text-accentDark" onClick={() => edit(it)}>Edit</button>
-                <button className="text-xs font-bold" style={{ color: "#B3271E" }} onClick={() => remove(it.id)}>Delete</button>
-              </div>
-            </div>
-          ))}
-          {items.length === 0 && <p className="text-sm text-muted">No products yet.</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------- Sponsors ---------- */
-
-function emptySponsor() {
-  return { name: "", logo_url: "", website: "", description: "", category: "", sort_order: "", active: true };
-}
-
-function SponsorsPanel({ supabase }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(emptySponsor());
-  const [editingId, setEditingId] = useState(null);
-
-  const load = async () => {
-    setLoading(true);
-    const { data } = await supabase.from("sponsors").select("*").order("sort_order", { ascending: true });
-    setItems(data || []);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
-
-  const save = async () => {
-    const payload = { ...form, sort_order: form.sort_order === "" ? null : Number(form.sort_order) };
-    if (editingId) {
-      await supabase.from("sponsors").update(payload).eq("id", editingId);
-    } else {
-      await supabase.from("sponsors").insert(payload);
-    }
-    setForm(emptySponsor());
-    setEditingId(null);
-    load();
-  };
-
-  const edit = (item) => { setForm({ ...emptySponsor(), ...item }); setEditingId(item.id); };
-  const remove = async (id) => {
-    if (confirm("Delete this sponsor?")) {
-      await supabase.from("sponsors").delete().eq("id", id);
-      load();
-    }
-  };
-
-  return (
-    <div>
-      <div className="border rounded-xl p-4 mb-6 space-y-3">
-        <h2 className="font-bold text-sm text-ink">{editingId ? "Edit Sponsor" : "Add New Sponsor"}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-          <Field label="Logo URL" value={form.logo_url} onChange={(v) => setForm({ ...form, logo_url: v })} />
-          <Field label="Website" value={form.website} onChange={(v) => setForm({ ...form, website: v })} />
-          <Field label="Category" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
-          <Field label="Sort Order" type="number" value={form.sort_order} onChange={(v) => setForm({ ...form, sort_order: v })} />
-        </div>
-        <TextArea label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
-        <Checkbox label="Active" checked={form.active} onChange={(v) => setForm({ ...form, active: v })} />
-        <div className="flex gap-2">
-          <button className="btn btn-primary" onClick={save}>
-            {editingId ? "Update Sponsor" : "Create Sponsor"}
-          </button>
-          {editingId && (
-            <button className="btn" onClick={() => { setForm(emptySponsor()); setEditingId(null); }}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((it) => (
-            <div key={it.id} className="flex items-center justify-between border rounded-lg px-4 py-3">
-              <div>
-                <p className="font-bold text-sm text-ink">{it.name}</p>
-                <p className="text-xs text-muted">{it.category} · {it.active ? "Active" : "Inactive"}</p>
-              </div>
-              <div className="flex gap-3">
-                <button className="text-xs font-bold text-accentDark" onClick={() => edit(it)}>Edit</button>
-                <button className="text-xs font-bold" style={{ color: "#B3271E" }} onClick={() => remove(it.id)}>Delete</button>
-              </div>
-            </div>
-          ))}
-          {items.length === 0 && <p className="text-sm text-muted">No sponsors yet.</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------- Registrations (read + status update) ---------- */
-
-const REG_STATUSES = ["Pending Payment", "Paid", "Cancelled"];
-
-function RegistrationsPanel({ supabase }) {
-  const [items, setItems] = useState([]);
-  const [events, setEvents] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  const load = async () => {
-    setLoading(true);
-    const { data: regs } = await supabase
-      .from("event_registrations")
-      .select("*")
-      .order("created_at", { ascending: false });
-    const { data: evs } = await supabase.from("events").select("id, name");
-    const evMap = {};
-    (evs || []).forEach((e) => { evMap[e.id] = e.name; });
-    setEvents(evMap);
-    setItems(regs || []);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
-
-  const updateStatus = async (id, status) => {
-    await supabase.from("event_registrations").update({ status }).eq("id", id);
-    load();
-  };
-
-  if (loading) return <p className="text-sm text-muted">Loading…</p>;
-
-  return (
-    <div className="space-y-3">
-      {items.map((r) => (
-        <div key={r.id} className="border rounded-lg px-4 py-3">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <p className="font-bold text-sm text-ink">{r.full_name} · {r.registration_code}</p>
-              <p className="text-xs text-muted">
-                {events[r.event_id] || "Unknown event"} · {r.mobile} · {r.email}
-              </p>
-              <p className="text-xs text-muted">
-                {r.city}{r.district ? `, ${r.district}` : ""}{r.state ? `, ${r.state}` : ""} · T-shirt: {r.tshirt_size || "—"}
-              </p>
-              <p className="text-xs text-muted">Payment: {r.payment_method || "—"}</p>
-              {r.payment_screenshot_url && (
-                <a
-                  href={r.payment_screenshot_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-bold text-accentDark underline"
-                >
-                  View payment screenshot
-                </a>
-              )}
-            </div>
-            <select
-              className="field-input !w-auto text-xs"
-              value={r.status}
-              onChange={(e) => updateStatus(r.id, e.target.value)}
-            >
-              {REG_STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      ))}
-      {items.length === 0 && <p className="text-sm text-muted">No registrations yet.</p>}
-    </div>
-  );
-            }
+                       }
