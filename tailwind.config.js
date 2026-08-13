@@ -5,11 +5,11 @@ module.exports = {
     extend: {
       colors: {
         ink: "#15130F",
-        bg: "#FAFAF8",
-        line: "#E7E2D9",
+        bg: "#F5EFE0",
+        line: "#E4DCC5",
         muted: "#6E685F",
-        accent: "#FF5A1F",
-        accentDark: "#C43D0E",
+        accent: "#E8A93B",
+        accentDark: "#B8791E",
       },
     },
   },
