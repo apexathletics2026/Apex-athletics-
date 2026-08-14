@@ -1,11 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { ArrowRight } from "lucide-react";
+
+const HeroScene = dynamic(() => import("./HeroScene"), { ssr: false });
 
 export function Hero() {
   return (
     <div className="relative max-w-6xl mx-auto px-5 pb-16 w-full text-white">
+      <div className="absolute -top-10 right-0 w-full max-w-md h-[420px] pointer-events-none opacity-90 hidden md:block">
+        <HeroScene />
+      </div>
       <span className="bib text-white border-white hero-fade inline-block" style={{ animationDelay: "0.1s" }}>
         №001
       </span>
@@ -102,4 +108,4 @@ export function Reveal({ children, className = "" }) {
       {children}
     </div>
   );
-    }
+          }
