@@ -46,4 +46,4 @@ export async function POST(req) {
   } catch (e) {
     return NextResponse.json({ error: "Server error starting payment." }, { status: 500 });
   }
-}
+      }
