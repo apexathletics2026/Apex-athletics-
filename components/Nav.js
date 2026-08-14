@@ -21,23 +21,24 @@ export default function Nav() {
     ["/events", "Events"],
     ["/store", "Store"],
     ["/sponsors", "Sponsors"],
+    ["/certificate", "Certificate"],
     ["/about", "About"],
     ["/contact", "Contact"],
   ];
 
   return (
-    <div className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b" style={{ borderColor: "#E7E2D9" }}>
+    <div className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b" style={{ borderColor: "#E4DCC5" }}>
       <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 flex items-center justify-center rounded-sm bg-ink">
-            <Zap size={16} color="#FF5A1F" strokeWidth={3} />
+            <Zap size={16} color="#E8A93B" strokeWidth={3} />
           </div>
           <span className="font-black text-lg tracking-tight text-ink">
             APEX <span className="text-accent">ATHLETICS</span>
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-7">
+        <nav className="hidden md:flex items-center gap-6">
           {links.map(([href, label]) => (
             <Link key={href} href={href} className="text-sm font-bold uppercase tracking-wide text-ink hover:text-accent">
               {label}
@@ -56,7 +57,7 @@ export default function Nav() {
       </div>
 
       {open && (
-        <div className="md:hidden border-t bg-white px-5 py-4 flex flex-col gap-4" style={{ borderColor: "#E7E2D9" }}>
+        <div className="md:hidden border-t bg-white px-5 py-4 flex flex-col gap-4" style={{ borderColor: "#E4DCC5" }}>
           {links.map(([href, label]) => (
             <Link key={href} href={href} onClick={() => setOpen(false)} className="font-bold uppercase text-sm text-ink">{label}</Link>
           ))}
@@ -66,4 +67,4 @@ export default function Nav() {
       )}
     </div>
   );
-              }
+  }
