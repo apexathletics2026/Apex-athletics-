@@ -1,9 +1,18 @@
 "use client";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { XCircle } from "lucide-react";
 
 export default function PaymentFailed() {
+  return (
+    <Suspense fallback={<div className="px-5 py-24 text-center text-muted">Loading…</div>}>
+      <PaymentFailedContent />
+    </Suspense>
+  );
+}
+
+function PaymentFailedContent() {
   const params = useSearchParams();
   const txnid = params.get("txnid");
 
