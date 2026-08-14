@@ -1,9 +1,18 @@
 "use client";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, ArrowRight } from "lucide-react";
 
 export default function PaymentSuccess() {
+  return (
+    <Suspense fallback={<div className="px-5 py-24 text-center text-muted">Loading…</div>}>
+      <PaymentSuccessContent />
+    </Suspense>
+  );
+}
+
+function PaymentSuccessContent() {
   const params = useSearchParams();
   const txnid = params.get("txnid");
 
@@ -15,4 +24,4 @@ export default function PaymentSuccess() {
       <Link href="/dashboard" className="btn btn-primary !w-full">Go to Dashboard <ArrowRight size={15}/></Link>
     </div>
   );
-    }
+}
