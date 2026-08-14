@@ -233,4 +233,4 @@ function F({ label, value, onChange }) {
       <input className="field-input" value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
-    }
+  }
