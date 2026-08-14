@@ -14,11 +14,19 @@ export default function AdminPage() {
   const [products, setProducts] = useState([]);
   const [sponsors, setSponsors] = useState([]);
   const [registrations, setRegistrations] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [upi, setUpi] = useState({ upi_id: "", qr_image_url: "" });
   const [qrFile, setQrFile] = useState(null);
   const [savingUpi, setSavingUpi] = useState(false);
   const [footer, setFooter] = useState({ phone: "", email: "", instagram: "", facebook: "", whatsapp: "" });
   const [savingFooter, setSavingFooter] = useState(false);
+  const [certificates, setCertificates] = useState([]);
+  const [founder, setFounder] = useState({ name: "", bio: "", photo_url: "", signature_url: "" });
+  const [savingFounder, setSavingFounder] = useState(false);
+  const [founderPhotoFile, setFounderPhotoFile] = useState(null);
+  const [founderSigFile, setFounderSigFile] = useState(null);
+  const [expandedReg, setExpandedReg] = useState(null);
+  const [expandedOrder, setExpandedOrder] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -33,17 +41,22 @@ export default function AdminPage() {
   }, []);
 
   const loadAll = async () => {
-    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }] = await Promise.all([
+    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }] = await Promise.all([
       supabase.from("events").select("*").order("event_date"),
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("sponsors").select("*").order("sort_order"),
       supabase.from("event_registrations").select("*, events(name)").order("created_at", { ascending: false }),
+      supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: false }),
     ]);
-    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []);
+    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []);
     const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
     if (s?.value) setUpi(s.value);
     const { data: f } = await supabase.from("website_settings").select("value").eq("key", "footer_contact").maybeSingle();
     if (f?.value) setFooter(f.value);
+    const { data: cert } = await supabase.from("certificates").select("*").order("created_at", { ascending: false });
+    setCertificates(cert || []);
+    const { data: fd } = await supabase.from("website_settings").select("value").eq("key", "founder").maybeSingle();
+    if (fd?.value) setFounder(fd.value);
   };
 
   const saveFooter = async (patch) => {
@@ -78,6 +91,9 @@ export default function AdminPage() {
   const approveRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Confirmed" }).eq("id", id); loadAll(); };
   const rejectRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Pending Payment" }).eq("id", id); loadAll(); };
 
+  const approveOrder = async (id) => { await supabase.from("orders").update({ payment_status: "Paid" }).eq("id", id); loadAll(); };
+  const undoOrder = async (id) => { await supabase.from("orders").update({ payment_status: "Processing" }).eq("id", id); loadAll(); };
+
   const addEvent = async () => {
     const slug = `event-${Date.now()}`;
     await supabase.from("events").insert({ slug, name: "New Event", category: "Running", event_date: "2026-12-01", fee: 500, max_participants: 500, status: "Draft" });
@@ -98,6 +114,48 @@ export default function AdminPage() {
   const updateSponsor = async (id, patch) => { await supabase.from("sponsors").update(patch).eq("id", id); loadAll(); };
   const deleteSponsor = async (id) => { await supabase.from("sponsors").delete().eq("id", id); loadAll(); };
 
+  const addCertificate = async () => {
+    await supabase.from("certificates").insert({
+      certificate_number: `CERT-${Date.now()}`, bib_number: "", full_name: "New Finisher",
+      event_name: events[0]?.name || "", category: "", finish_time: "", position: "",
+    });
+    loadAll();
+  };
+  const updateCertificate = async (id, patch) => { await supabase.from("certificates").update(patch).eq("id", id); loadAll(); };
+  const deleteCertificate = async (id) => { await supabase.from("certificates").delete().eq("id", id); loadAll(); };
+
+  const saveFounder = async (patch) => {
+    setSavingFounder(true);
+    const next = { ...founder, ...patch };
+    await supabase.from("website_settings").upsert({ key: "founder", value: next });
+    setFounder(next);
+    setSavingFounder(false);
+  };
+  const uploadFounderPhoto = async () => {
+    if (!founderPhotoFile) return;
+    setSavingFounder(true);
+    const path = `founder-photo-${Date.now()}.${founderPhotoFile.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, founderPhotoFile);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      await saveFounder({ photo_url: pub.publicUrl });
+    }
+    setFounderPhotoFile(null);
+    setSavingFounder(false);
+  };
+  const uploadFounderSig = async () => {
+    if (!founderSigFile) return;
+    setSavingFounder(true);
+    const path = `founder-sig-${Date.now()}.${founderSigFile.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, founderSigFile);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      await saveFounder({ signature_url: pub.publicUrl });
+    }
+    setFounderSigFile(null);
+    setSavingFounder(false);
+  };
+
   if (checking) return <div className="max-w-6xl mx-auto px-5 py-20 text-center text-muted">Checking access…</div>;
 
   if (!isAdmin) {
@@ -110,14 +168,14 @@ export default function AdminPage() {
     );
   }
 
-  const tabs = ["overview", "events", "products", "sponsors", "registrations", "payment settings", "site settings"];
+  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder"];
   const stats = [
     ["Total Events", events.length],
     ["Registrations", registrations.length],
+    ["Orders", orders.length],
     ["Products", products.length],
     ["Sponsors", sponsors.length],
-    ["Open Events", events.filter(e => e.status === "Registration Open").length],
-    ["Pending Payments", registrations.filter(r => r.status === "Pending Payment").length],
+    ["Pending Payments", registrations.filter(r => r.status !== "Confirmed").length + orders.filter(o => o.payment_status !== "Paid").length],
   ];
 
   return (
@@ -202,29 +260,98 @@ export default function AdminPage() {
 
       {tab === "registrations" && (
         <div className="space-y-3">
-          {registrations.map((r) => (
-            <div key={r.id} className="border rounded-sm p-4 flex flex-wrap items-center gap-4 justify-between" style={{ borderColor: "#E7E2D9" }}>
-              <div>
-                <div className="font-black text-sm">{r.registration_code} — {r.full_name}</div>
-                <div className="text-xs text-muted">{r.events?.name} · {r.mobile}</div>
-                <div className="text-xs font-bold mt-1" style={{ color: r.status === "Confirmed" ? "#1B7A3B" : "#C43D0E" }}>{r.status}</div>
+          {registrations.map((r) => {
+            const open = expandedReg === r.id;
+            return (
+              <div key={r.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                <div className="flex flex-wrap items-center gap-4 justify-between">
+                  <button className="text-left" onClick={() => setExpandedReg(open ? null : r.id)}>
+                    <div className="font-black text-sm">{r.registration_code} — {r.full_name}</div>
+                    <div className="text-xs text-muted">{r.events?.name} · {r.mobile}</div>
+                    <div className="text-xs font-bold mt-1" style={{ color: r.status === "Confirmed" ? "#1B7A3B" : "#C43D0E" }}>{r.status}</div>
+                  </button>
+                  <div className="flex items-center gap-3">
+                    {r.payment_screenshot_url && (
+                      <a href={r.payment_screenshot_url} target="_blank" rel="noreferrer">
+                        <img src={r.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
+                      </a>
+                    )}
+                    {r.status !== "Confirmed" && (
+                      <button onClick={() => approveRegistration(r.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
+                    )}
+                    {r.status === "Confirmed" && (
+                      <button onClick={() => rejectRegistration(r.id)} className="btn btn-outline !py-2 !px-4 !text-xs">Undo</button>
+                    )}
+                  </div>
+                </div>
+                {open && (
+                  <div className="mt-4 pt-4 border-t grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs" style={{ borderColor: "#E7E2D9" }}>
+                    <Row label="Email" value={r.email} />
+                    <Row label="DOB" value={r.dob} />
+                    <Row label="Gender" value={r.gender} />
+                    <Row label="City / State" value={`${r.city || ""}, ${r.state || ""}`} />
+                    <Row label="T-Shirt Size" value={r.tshirt_size} />
+                    <Row label="Emergency Contact" value={`${r.emergency_name || ""} — ${r.emergency_phone || ""}`} />
+                    <Row label="Medical Declaration" value={r.medical_declaration ? "Yes" : "No"} />
+                    <Row label="Terms Accepted" value={r.terms_accepted ? "Yes" : "No"} />
+                    <Row label="Payment Method" value={r.payment_method} />
+                    <Row label="Submitted" value={new Date(r.created_at).toLocaleString()} />
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-3">
-                {r.payment_screenshot_url && (
-                  <a href={r.payment_screenshot_url} target="_blank" rel="noreferrer">
-                    <img src={r.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
-                  </a>
-                )}
-                {r.status !== "Confirmed" && (
-                  <button onClick={() => approveRegistration(r.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
-                )}
-                {r.status === "Confirmed" && (
-                  <button onClick={() => rejectRegistration(r.id)} className="btn btn-outline !py-2 !px-4 !text-xs">Undo</button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {registrations.length === 0 && <p className="text-sm text-muted">No registrations yet.</p>}
+        </div>
+      )}
+
+      {tab === "orders" && (
+        <div className="space-y-3">
+          {orders.map((o) => {
+            const open = expandedOrder === o.id;
+            return (
+              <div key={o.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                <div className="flex flex-wrap items-center gap-4 justify-between">
+                  <button className="text-left" onClick={() => setExpandedOrder(open ? null : o.id)}>
+                    <div className="font-black text-sm">{o.order_number} — {o.full_name}</div>
+                    <div className="text-xs text-muted">₹{o.total_amount} · {o.mobile}</div>
+                    <div className="text-xs font-bold mt-1" style={{ color: o.payment_status === "Paid" ? "#1B7A3B" : "#C43D0E" }}>{o.payment_status}</div>
+                  </button>
+                  <div className="flex items-center gap-3">
+                    {o.payment_screenshot_url && (
+                      <a href={o.payment_screenshot_url} target="_blank" rel="noreferrer">
+                        <img src={o.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
+                      </a>
+                    )}
+                    {o.payment_status !== "Paid" ? (
+                      <button onClick={() => approveOrder(o.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
+                    ) : (
+                      <button onClick={() => undoOrder(o.id)} className="btn btn-outline !py-2 !px-4 !text-xs">Undo</button>
+                    )}
+                  </div>
+                </div>
+                {open && (
+                  <div className="mt-4 pt-4 border-t text-xs space-y-2" style={{ borderColor: "#E7E2D9" }}>
+                    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                      <Row label="Email" value={o.email} />
+                      <Row label="Address" value={o.address} />
+                      <Row label="City / State" value={`${o.city || ""}, ${o.state || ""}`} />
+                      <Row label="Pincode" value={o.pincode} />
+                      <Row label="Ordered" value={new Date(o.created_at).toLocaleString()} />
+                    </div>
+                    <div className="font-bold uppercase text-[10px] text-muted mt-2">Items</div>
+                    {(o.order_items || []).map((it) => (
+                      <div key={it.id} className="flex justify-between">
+                        <span>{it.product_name} × {it.quantity}</span>
+                        <span>₹{it.unit_price * it.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {orders.length === 0 && <p className="text-sm text-muted">No orders yet.</p>}
         </div>
       )}
 
@@ -260,10 +387,69 @@ export default function AdminPage() {
           {savingFooter && <p className="text-xs text-muted">Saving…</p>}
         </div>
       )}
+
+      {tab === "certificates" && (
+        <div>
+          <button className="btn btn-primary mb-5" onClick={addCertificate}><Plus size={15}/> Add Certificate</button>
+          <div className="space-y-3">
+            {certificates.map((c) => (
+              <div key={c.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                  <TF label="Certificate Number" value={c.certificate_number} onBlur={(v) => updateCertificate(c.id, { certificate_number: v })} />
+                  <TF label="Bib Number" value={c.bib_number} onBlur={(v) => updateCertificate(c.id, { bib_number: v })} />
+                  <TF label="Full Name" value={c.full_name} onBlur={(v) => updateCertificate(c.id, { full_name: v })} />
+                  <TF label="Event Name" value={c.event_name} onBlur={(v) => updateCertificate(c.id, { event_name: v })} />
+                  <TF label="Category" value={c.category} onBlur={(v) => updateCertificate(c.id, { category: v })} />
+                  <TF label="Finish Time" value={c.finish_time} onBlur={(v) => updateCertificate(c.id, { finish_time: v })} />
+                  <TF label="Position" value={c.position} onBlur={(v) => updateCertificate(c.id, { position: v })} />
+                </div>
+                <button onClick={() => deleteCertificate(c.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
+              </div>
+            ))}
+            {certificates.length === 0 && <p className="text-sm text-muted">No certificates yet. Click "Add Certificate" then fill in the fields.</p>}
+          </div>
+        </div>
+      )}
+
+      {tab === "founder" && (
+        <div className="max-w-md space-y-5">
+          <p className="text-sm text-muted mb-2">Shows on the About page and on every certificate.</p>
+          <div><label className="field-label">Founder Name</label><input className="field-input" defaultValue={founder.name} onBlur={(e) => saveFounder({ name: e.target.value })} /></div>
+          <div><label className="field-label">Bio</label><textarea rows={4} className="field-input" defaultValue={founder.bio} onBlur={(e) => saveFounder({ bio: e.target.value })} /></div>
+
+          <div>
+            <label className="field-label">Founder Photo</label>
+            {founder.photo_url && <img src={founder.photo_url} alt="Founder" className="w-24 h-24 rounded-full object-cover border mb-3" style={{ borderColor: "#E7E2D9" }} />}
+            <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-6 text-sm cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+              <Upload size={16}/> {founderPhotoFile ? founderPhotoFile.name : "Tap to choose photo"}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => setFounderPhotoFile(e.target.files?.[0] || null)} />
+            </label>
+            {founderPhotoFile && <button disabled={savingFounder} onClick={uploadFounderPhoto} className="btn btn-primary !w-full mt-3">{savingFounder ? "Uploading…" : "Upload & Save"}</button>}
+          </div>
+
+          <div>
+            <label className="field-label">Signature Image</label>
+            {founder.signature_url && <img src={founder.signature_url} alt="Signature" className="w-40 h-16 object-contain border mb-3" style={{ borderColor: "#E7E2D9" }} />}
+            <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-6 text-sm cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+              <Upload size={16}/> {founderSigFile ? founderSigFile.name : "Tap to choose signature image"}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => setFounderSigFile(e.target.files?.[0] || null)} />
+            </label>
+            {founderSigFile && <button disabled={savingFounder} onClick={uploadFounderSig} className="btn btn-primary !w-full mt-3">{savingFounder ? "Uploading…" : "Upload & Save"}</button>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between gap-2 py-0.5">
+      <span className="text-muted">{label}</span>
+      <span className="font-medium text-right">{value || "—"}</span>
+    </div>
+  );
+}
 function TF({ label, value, onBlur, type = "text" }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
@@ -283,4 +469,4 @@ function SF({ label, value, onChange, options }) {
       </select>
     </div>
   );
-                    }
+        }
