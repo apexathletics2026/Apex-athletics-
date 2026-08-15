@@ -17,18 +17,16 @@ export default async function SponsorsPage() {
           <div className="text-xs font-bold uppercase tracking-widest mb-4 text-accentDark">{cat}</div>
           <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
             {list.map((s) => {
-              const Card = (
+              const card = (
                 <div className="border rounded-sm p-6 flex flex-col items-center justify-center text-center gap-2 h-full" style={{ borderColor: "#E4DCC5" }}>
-                  {s.logo_url ? (
-                    <img src={s.logo_url} alt={s.name} className="h-14 object-contain mb-2" />
-                  ) : null}
+                  {s.logo_url ? <img src={s.logo_url} alt={s.name} className="h-14 object-contain mb-2" /> : null}
                   <span className="font-black text-ink">{s.name}</span>
                 </div>
               );
               return s.website ? (
-                <a key={s.id} href={s.website} target="_blank" rel="noreferrer" className="hover:opacity-80">{Card}</a>
+                <a key={s.id} href={s.website} target="_blank" rel="noreferrer" className="hover:opacity-80">{card}</a>
               ) : (
-                <div key={s.id}>{Card}</div>
+                <div key={s.id}>{card}</div>
               );
             })}
           </div>
