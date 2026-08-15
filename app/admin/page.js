@@ -94,9 +94,10 @@ export default function AdminPage() {
   const deleteRegistration = async (id) => { await supabase.from("event_registrations").delete().eq("id", id); loadAll(); };
 
   const addOfflineRegistration = async () => {
-    const code = `APX-OFF-${Date.now().toString().slice(-6)}`;
+    const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code");
+    if (codeError || !codeData) return;
     await supabase.from("event_registrations").insert({
-      registration_code: code,
+      registration_code: codeData,
       event_id: events[0]?.id || null,
       full_name: "New Offline Registrant",
       mobile: "",
@@ -326,6 +327,7 @@ export default function AdminPage() {
                           <Row label="T-Shirt Size" value={r.tshirt_size} />
                           <Row label="Emergency Contact" value={`${r.emergency_name || ""} — ${r.emergency_phone || ""}`} />
                           <Row label="Payment Method" value={r.payment_method} />
+                          <Row label="Transaction ID" value={r.payment_transaction_id} />
                           <Row label="Submitted" value={new Date(r.created_at).toLocaleString()} />
                         </div>
                       )}
@@ -499,4 +501,4 @@ function SF({ label, value, onChange, options }) {
       </select>
     </div>
   );
-}
+    }
