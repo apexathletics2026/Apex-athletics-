@@ -35,8 +35,10 @@ export default function RegisterPage({ params }) {
   const createRegistrationAndPay = async () => {
     setErr("");
     setPaying(true);
-    const code = `${String(Math.floor(1000 + Math.random() * 9000))}`;
-    const registrationCode = `APX-2026-${code}`;
+
+    const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code");
+    if (codeError || !codeData) { setErr("Could not generate a registration number. Please try again."); setPaying(false); return; }
+    const registrationCode = codeData;
 
     const { data: u } = await supabase.auth.getUser();
     const { data: reg, error } = await supabase.from("event_registrations").insert({
