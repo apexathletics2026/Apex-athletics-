@@ -90,6 +90,22 @@ export default function AdminPage() {
 
   const approveRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Confirmed" }).eq("id", id); loadAll(); };
   const rejectRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Pending Payment" }).eq("id", id); loadAll(); };
+  const updateRegistration = async (id, patch) => { await supabase.from("event_registrations").update(patch).eq("id", id); loadAll(); };
+  const deleteRegistration = async (id) => { await supabase.from("event_registrations").delete().eq("id", id); loadAll(); };
+
+  const addOfflineRegistration = async () => {
+    const code = `APX-OFF-${Date.now().toString().slice(-6)}`;
+    await supabase.from("event_registrations").insert({
+      registration_code: code,
+      event_id: events[0]?.id || null,
+      full_name: "New Offline Registrant",
+      mobile: "",
+      address: "",
+      payment_method: "Offline",
+      status: "Confirmed",
+    });
+    loadAll();
+  };
 
   const approveOrder = async (id) => { await supabase.from("orders").update({ payment_status: "Paid" }).eq("id", id); loadAll(); };
   const undoOrder = async (id) => { await supabase.from("orders").update({ payment_status: "Processing" }).eq("id", id); loadAll(); };
@@ -163,15 +179,20 @@ export default function AdminPage() {
       <div className="max-w-sm mx-auto px-5 py-20 text-center">
         <ShieldCheck size={28} color="#FF5A1F" className="mx-auto mb-4" />
         <h1 className="font-black text-xl mb-2 text-ink">Not Authorized</h1>
-        <p className="text-sm text-muted">This account isn't in the admins list. See MANUAL_SETUP.md for how to add yourself as admin.</p>
+        <p className="text-sm text-muted">This account isn't in the admins list.</p>
       </div>
     );
   }
 
   const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder"];
+  const totalRegs = registrations.length;
+  const offlineRegs = registrations.filter(r => r.payment_method === "Offline").length;
+  const onlineRegs = totalRegs - offlineRegs;
   const stats = [
     ["Total Events", events.length],
-    ["Registrations", registrations.length],
+    ["Total Registrations", totalRegs],
+    ["Online", onlineRegs],
+    ["Offline", offlineRegs],
     ["Orders", orders.length],
     ["Products", products.length],
     ["Sponsors", sponsors.length],
@@ -259,49 +280,62 @@ export default function AdminPage() {
       )}
 
       {tab === "registrations" && (
-        <div className="space-y-3">
-          {registrations.map((r) => {
-            const open = expandedReg === r.id;
-            return (
-              <div key={r.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
-                <div className="flex flex-wrap items-center gap-4 justify-between">
-                  <button className="text-left" onClick={() => setExpandedReg(open ? null : r.id)}>
-                    <div className="font-black text-sm">{r.registration_code} — {r.full_name}</div>
-                    <div className="text-xs text-muted">{r.events?.name} · {r.mobile}</div>
-                    <div className="text-xs font-bold mt-1" style={{ color: r.status === "Confirmed" ? "#1B7A3B" : "#C43D0E" }}>{r.status}</div>
-                  </button>
-                  <div className="flex items-center gap-3">
-                    {r.payment_screenshot_url && (
-                      <a href={r.payment_screenshot_url} target="_blank" rel="noreferrer">
-                        <img src={r.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
-                      </a>
-                    )}
-                    {r.status !== "Confirmed" && (
-                      <button onClick={() => approveRegistration(r.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
-                    )}
-                    {r.status === "Confirmed" && (
-                      <button onClick={() => rejectRegistration(r.id)} className="btn btn-outline !py-2 !px-4 !text-xs">Undo</button>
-                    )}
+        <div>
+          <button className="btn btn-primary mb-5" onClick={addOfflineRegistration}><Plus size={15}/> Add Offline Registration</button>
+          <div className="space-y-3">
+            {registrations.map((r) => {
+              const open = expandedReg === r.id;
+              return (
+                <div key={r.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                  <div className="flex flex-wrap items-center gap-4 justify-between">
+                    <button className="text-left" onClick={() => setExpandedReg(open ? null : r.id)}>
+                      <div className="font-black text-sm">{r.registration_code} — {r.full_name}</div>
+                      <div className="text-xs text-muted">{r.events?.name} · {r.mobile} · {r.payment_method}</div>
+                      <div className="text-xs font-bold mt-1" style={{ color: r.status === "Confirmed" ? "#1B7A3B" : "#C43D0E" }}>{r.status}</div>
+                    </button>
+                    <div className="flex items-center gap-3">
+                      {r.payment_screenshot_url && (
+                        <a href={r.payment_screenshot_url} target="_blank" rel="noreferrer">
+                          <img src={r.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
+                        </a>
+                      )}
+                      {r.status !== "Confirmed" ? (
+                        <button onClick={() => approveRegistration(r.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
+                      ) : (
+                        <button onClick={() => rejectRegistration(r.id)} className="btn btn-outline !py-2 !px-4 !text-xs">Undo</button>
+                      )}
+                      <button onClick={() => deleteRegistration(r.id)} className="text-xs" style={{ color: "#B3271E" }}><Trash2 size={14}/></button>
+                    </div>
                   </div>
+                  {open && (
+                    <div className="mt-4 pt-4 border-t text-xs" style={{ borderColor: "#E7E2D9" }}>
+                      {r.payment_method === "Offline" ? (
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <TF label="Full Name" value={r.full_name} onBlur={(v) => updateRegistration(r.id, { full_name: v })} />
+                          <TF label="Mobile" value={r.mobile} onBlur={(v) => updateRegistration(r.id, { mobile: v })} />
+                          <TF label="Address" value={r.address} onBlur={(v) => updateRegistration(r.id, { address: v })} />
+                          <SF label="Event" value={r.event_id || ""} onChange={(v) => updateRegistration(r.id, { event_id: v })} options={events.map(e => e.id)} />
+                        </div>
+                      ) : (
+                        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                          <Row label="Email" value={r.email} />
+                          <Row label="DOB" value={r.dob} />
+                          <Row label="Gender" value={r.gender} />
+                          <Row label="Address" value={r.address} />
+                          <Row label="City / State" value={`${r.city || ""}, ${r.state || ""}`} />
+                          <Row label="T-Shirt Size" value={r.tshirt_size} />
+                          <Row label="Emergency Contact" value={`${r.emergency_name || ""} — ${r.emergency_phone || ""}`} />
+                          <Row label="Payment Method" value={r.payment_method} />
+                          <Row label="Submitted" value={new Date(r.created_at).toLocaleString()} />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {open && (
-                  <div className="mt-4 pt-4 border-t grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs" style={{ borderColor: "#E7E2D9" }}>
-                    <Row label="Email" value={r.email} />
-                    <Row label="DOB" value={r.dob} />
-                    <Row label="Gender" value={r.gender} />
-                    <Row label="City / State" value={`${r.city || ""}, ${r.state || ""}`} />
-                    <Row label="T-Shirt Size" value={r.tshirt_size} />
-                    <Row label="Emergency Contact" value={`${r.emergency_name || ""} — ${r.emergency_phone || ""}`} />
-                    <Row label="Medical Declaration" value={r.medical_declaration ? "Yes" : "No"} />
-                    <Row label="Terms Accepted" value={r.terms_accepted ? "Yes" : "No"} />
-                    <Row label="Payment Method" value={r.payment_method} />
-                    <Row label="Submitted" value={new Date(r.created_at).toLocaleString()} />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {registrations.length === 0 && <p className="text-sm text-muted">No registrations yet.</p>}
+              );
+            })}
+            {registrations.length === 0 && <p className="text-sm text-muted">No registrations yet.</p>}
+          </div>
         </div>
       )}
 
@@ -357,12 +391,10 @@ export default function AdminPage() {
 
       {tab === "payment settings" && (
         <div className="max-w-md">
-          <p className="text-sm text-muted mb-6">This UPI ID and QR code show up on the registration payment step until Razorpay is connected.</p>
+          <p className="text-sm text-muted mb-6">Backup manual UPI payment option.</p>
           <div className="mb-5">
             <label className="field-label">UPI ID</label>
-            <div className="flex gap-2">
-              <input className="field-input" defaultValue={upi.upi_id} onBlur={(e) => saveUpi({ upi_id: e.target.value })} placeholder="yourname@upi" />
-            </div>
+            <input className="field-input" defaultValue={upi.upi_id} onBlur={(e) => saveUpi({ upi_id: e.target.value })} placeholder="yourname@upi" />
           </div>
           <div className="mb-5">
             <label className="field-label">QR Code Image</label>
@@ -406,7 +438,7 @@ export default function AdminPage() {
                 <button onClick={() => deleteCertificate(c.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
               </div>
             ))}
-            {certificates.length === 0 && <p className="text-sm text-muted">No certificates yet. Click "Add Certificate" then fill in the fields.</p>}
+            {certificates.length === 0 && <p className="text-sm text-muted">No certificates yet.</p>}
           </div>
         </div>
       )}
@@ -416,7 +448,6 @@ export default function AdminPage() {
           <p className="text-sm text-muted mb-2">Shows on the About page and on every certificate.</p>
           <div><label className="field-label">Founder Name</label><input className="field-input" defaultValue={founder.name} onBlur={(e) => saveFounder({ name: e.target.value })} /></div>
           <div><label className="field-label">Bio</label><textarea rows={4} className="field-input" defaultValue={founder.bio} onBlur={(e) => saveFounder({ bio: e.target.value })} /></div>
-
           <div>
             <label className="field-label">Founder Photo</label>
             {founder.photo_url && <img src={founder.photo_url} alt="Founder" className="w-24 h-24 rounded-full object-cover border mb-3" style={{ borderColor: "#E7E2D9" }} />}
@@ -426,7 +457,6 @@ export default function AdminPage() {
             </label>
             {founderPhotoFile && <button disabled={savingFounder} onClick={uploadFounderPhoto} className="btn btn-primary !w-full mt-3">{savingFounder ? "Uploading…" : "Upload & Save"}</button>}
           </div>
-
           <div>
             <label className="field-label">Signature Image</label>
             {founder.signature_url && <img src={founder.signature_url} alt="Signature" className="w-40 h-16 object-contain border mb-3" style={{ borderColor: "#E7E2D9" }} />}
@@ -469,4 +499,4 @@ function SF({ label, value, onChange, options }) {
       </select>
     </div>
   );
-    }
+}
