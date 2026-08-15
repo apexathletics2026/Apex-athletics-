@@ -9,7 +9,7 @@ export async function POST(req) {
 
   const salt = process.env.PAYU_MERCHANT_SALT;
   const expectedHash = crypto.createHash("sha512")
-    .update(`${salt}|${status}|||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`)
+    .update(`${salt}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`)
     .digest("hex");
 
   const verified = expectedHash === hash;
