@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { ShoppingBag, Minus, Plus, X, Upload, CheckCircle2, ArrowRight, Copy } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { ShoppingBag, Minus, Plus, X, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function StorePage() {
@@ -8,20 +8,17 @@ export default function StorePage() {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState(0); // 0 = cart, 1 = details, 2 = payment, 3 = done
-  const [upi, setUpi] = useState({ upi_id: "", qr_image_url: "" });
-  const [screenshot, setScreenshot] = useState(null);
-  const [uploading, setUploading] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState(0); // 0 = cart, 1 = details, 2 = paying
   const [err, setErr] = useState("");
-  const [orderNumber, setOrderNumber] = useState("");
+  const [paying, setPaying] = useState(false);
+  const formRef = useRef(null);
+  const [payuParams, setPayuParams] = useState(null);
   const [form, setForm] = useState({ fullName: "", mobile: "", email: "", address: "", city: "", state: "", pincode: "" });
 
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("products").select("*").eq("status", "Active").order("created_at", { ascending: false });
       setProducts(data || []);
-      const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
-      if (s?.value) setUpi(s.value);
     })();
   }, []);
 
@@ -39,21 +36,13 @@ export default function StorePage() {
   const removeItem = (id) => setCart((c) => c.filter((i) => i.id !== id));
   const total = cart.reduce((s, i) => s + Number(i.discount_price || i.price) * i.qty, 0);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const copyUpi = async () => { try { await navigator.clipboard.writeText(upi.upi_id); } catch {} };
 
   const submitOrder = async () => {
     setErr("");
-    if (!screenshot) { setErr("Please upload a screenshot of your payment before submitting."); return; }
-    setUploading(true);
-    const orderNo = `ORD-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
-    const fileExt = screenshot.name.split(".").pop();
-    const filePath = `${orderNo}-${Date.now()}.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage.from("payment-screenshots").upload(filePath, screenshot);
-    if (uploadError) { setErr("Screenshot upload failed: " + uploadError.message); setUploading(false); return; }
-    const { data: pub } = supabase.storage.from("payment-screenshots").getPublicUrl(filePath);
-
+    setPaying(true);
     const { data: u } = await supabase.auth.getUser();
+    const orderNo = `ORD-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
+
     const { data: order, error } = await supabase.from("orders").insert({
       user_id: u?.user?.id || null,
       order_number: orderNo,
@@ -65,11 +54,10 @@ export default function StorePage() {
       state: form.state,
       pincode: form.pincode,
       total_amount: total,
-      payment_status: "Processing",
-      payment_screenshot_url: pub.publicUrl,
+      payment_status: "Pending",
     }).select().single();
 
-    if (error) { setErr("Something went wrong: " + error.message); setUploading(false); return; }
+    if (error) { setErr("Something went wrong: " + error.message); setPaying(false); return; }
 
     const items = cart.map((i) => ({
       order_id: order.id, product_id: i.id, product_name: i.name,
@@ -77,11 +65,26 @@ export default function StorePage() {
     }));
     await supabase.from("order_items").insert(items);
 
-    setUploading(false);
-    setOrderNumber(orderNo);
-    setCheckoutStep(3);
-    setCart([]);
+    const res = await fetch("/api/payu/initiate-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        order_number: orderNo,
+        amount: total,
+        name: form.fullName,
+        email: form.email,
+        phone: form.mobile,
+      }),
+    });
+    const result = await res.json();
+    if (!result.action) { setErr(result.error || "Could not start payment."); setPaying(false); return; }
+    setPayuParams(result);
+    setPaying(false);
   };
+
+  useEffect(() => {
+    if (payuParams && formRef.current) formRef.current.submit();
+  }, [payuParams]);
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-14">
@@ -99,11 +102,14 @@ export default function StorePage() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
         {products.map((p) => (
           <div key={p.id} className="border rounded-sm overflow-hidden bg-white flex flex-col" style={{ borderColor: "#E4DCC5" }}>
-            <div className="h-40 md:h-48 bg-gray-100" />
+            <div className="h-40 md:h-48 bg-gray-100">
+              {p.image_url && <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />}
+            </div>
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-[11px] font-bold uppercase text-muted mb-1">{p.category}</div>
-              <div className="font-bold text-sm mb-2 flex-1 text-ink">{p.name}</div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="font-bold text-sm mb-1 text-ink">{p.name}</div>
+              {p.description && <p className="text-xs text-muted mb-2 line-clamp-2">{p.description}</p>}
+              <div className="flex items-center gap-2 mb-3 mt-auto">
                 {p.discount_price ? (
                   <><span className="font-black text-ink">₹{p.discount_price}</span><span className="text-xs line-through text-muted">₹{p.price}</span></>
                 ) : (
@@ -122,12 +128,7 @@ export default function StorePage() {
           <div className="flex-1 bg-black/40" onClick={() => { setShowCart(false); setCheckoutStep(0); }} />
           <div className="w-full max-w-sm bg-white h-full p-6 overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-black text-lg">
-                {checkoutStep === 0 && "Your Cart"}
-                {checkoutStep === 1 && "Delivery Details"}
-                {checkoutStep === 2 && "Payment"}
-                {checkoutStep === 3 && "Order Placed"}
-              </h3>
+              <h3 className="font-black text-lg">{checkoutStep === 0 ? "Your Cart" : "Delivery Details"}</h3>
               <button onClick={() => { setShowCart(false); setCheckoutStep(0); }}><X /></button>
             </div>
 
@@ -137,7 +138,9 @@ export default function StorePage() {
                 <div className="space-y-4">
                   {cart.map((i) => (
                     <div key={i.id} className="flex gap-3 items-center">
-                      <div className="w-14 h-14 bg-gray-100 rounded-sm" />
+                      <div className="w-14 h-14 bg-gray-100 rounded-sm overflow-hidden">
+                        {i.image_url && <img src={i.image_url} className="w-full h-full object-cover" />}
+                      </div>
                       <div className="flex-1">
                         <div className="text-sm font-bold">{i.name}</div>
                         <div className="text-xs text-muted">₹{i.discount_price || i.price}</div>
@@ -171,52 +174,22 @@ export default function StorePage() {
                   <F label="State" value={form.state} onChange={(v) => set("state", v)} />
                 </div>
                 <F label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v)} />
+                {err && <p className="text-xs" style={{ color: "#B3271E" }}>{err}</p>}
                 <button
                   className="btn btn-primary !w-full disabled:opacity-40"
-                  disabled={!form.fullName || !form.mobile || !form.address}
-                  onClick={() => setCheckoutStep(2)}
+                  disabled={!form.fullName || !form.mobile || !form.address || paying}
+                  onClick={submitOrder}
                 >
-                  Continue to Payment <ArrowRight size={15}/>
+                  {paying ? "Redirecting to Payment…" : `Pay ₹${total} with PayU`} <ArrowRight size={15}/>
                 </button>
-              </div>
-            )}
 
-            {checkoutStep === 2 && (
-              <div className="space-y-5">
-                <div className="border rounded-sm p-5 text-center" style={{ borderColor: "#E4DCC5" }}>
-                  <div className="font-black text-xl mb-1 text-ink">Pay ₹{total}</div>
-                  <div className="text-xs text-muted mb-4">Scan the QR code or pay to the UPI ID below</div>
-                  {upi.qr_image_url ? (
-                    <img src={upi.qr_image_url} alt="UPI QR" className="w-40 h-40 mx-auto mb-4 border" style={{ borderColor: "#E4DCC5" }} />
-                  ) : (
-                    <div className="w-40 h-40 mx-auto mb-4 border flex items-center justify-center text-xs text-muted" style={{ borderColor: "#E4DCC5" }}>QR not added yet</div>
-                  )}
-                  {upi.upi_id && (
-                    <button onClick={copyUpi} className="inline-flex items-center gap-2 text-sm font-bold px-4 py-2 border rounded-sm" style={{ borderColor: "#E4DCC5" }}>
-                      {upi.upi_id} <Copy size={14}/>
-                    </button>
-                  )}
-                </div>
-                <div>
-                  <label className="field-label">Upload Payment Screenshot</label>
-                  <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-6 text-sm cursor-pointer text-muted" style={{ borderColor: "#E4DCC5" }}>
-                    <Upload size={16}/> {screenshot ? screenshot.name : "Tap to choose screenshot"}
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => setScreenshot(e.target.files?.[0] || null)} />
-                  </label>
-                </div>
-                {err && <p className="text-xs" style={{ color: "#B3271E" }}>{err}</p>}
-                <button disabled={uploading} className="btn btn-primary !w-full disabled:opacity-50" onClick={submitOrder}>
-                  {uploading ? "Submitting…" : "Submit Order"} <ArrowRight size={15}/>
-                </button>
-              </div>
-            )}
-
-            {checkoutStep === 3 && (
-              <div className="text-center py-6">
-                <CheckCircle2 size={40} color="#E8A93B" className="mx-auto mb-4" />
-                <p className="font-black text-lg mb-1 text-ink">Order Submitted</p>
-                <p className="text-xs text-muted mb-4">{orderNumber}</p>
-                <p className="text-sm text-muted">We'll confirm once your payment screenshot is verified.</p>
+                {payuParams && (
+                  <form ref={formRef} action={payuParams.action} method="post" className="hidden">
+                    {Object.entries(payuParams.params).map(([k, v]) => (
+                      <input key={k} type="hidden" name={k} value={v} />
+                    ))}
+                  </form>
+                )}
               </div>
             )}
           </div>
@@ -233,4 +206,4 @@ function F({ label, value, onChange }) {
       <input className="field-input" value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
-  }
+                                     }
