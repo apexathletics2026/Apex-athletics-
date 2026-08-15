@@ -275,6 +275,14 @@ export default function AdminPage() {
                     <input type="checkbox" checked={p.featured} onChange={(e) => updateProduct(p.id, { featured: e.target.checked })} /> Featured
                   </label>
                 </div>
+                <div className="mb-3">
+                  <label className="field-label">Description</label>
+                  <textarea rows={3} className="field-input" defaultValue={p.description} onBlur={(e) => updateProduct(p.id, { description: e.target.value })} />
+                </div>
+                <div className="mb-3">
+                  {p.image_url && <img src={p.image_url} alt={p.name} className="h-24 object-cover border mb-2 rounded-sm" style={{ borderColor: "#E7E2D9" }} />}
+                  <ProductPhotoUpload productId={p.id} onUploaded={(url) => updateProduct(p.id, { image_url: url })} />
+                </div>
                 <button onClick={() => deleteProduct(p.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
               </div>
             ))}
@@ -291,6 +299,11 @@ export default function AdminPage() {
                 <div className="grid sm:grid-cols-2 gap-3 mb-3">
                   <TF label="Name" value={s.name} onBlur={(v) => updateSponsor(s.id, { name: v })} />
                   <SF label="Category" value={s.category} onChange={(v) => updateSponsor(s.id, { category: v })} options={["Title Sponsor", "Gold Sponsor", "Silver Sponsor", "Partner", "Supporting Partner", "Media Partner"]} />
+                  <TF label="Website Link" value={s.website} onBlur={(v) => updateSponsor(s.id, { website: v })} />
+                </div>
+                <div className="mb-3">
+                  {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-16 object-contain border mb-2" style={{ borderColor: "#E7E2D9" }} />}
+                  <SponsorLogoUpload sponsorId={s.id} onUploaded={(url) => updateSponsor(s.id, { logo_url: url })} />
                 </div>
                 <button onClick={() => deleteSponsor(s.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
               </div>
@@ -547,4 +560,62 @@ function SF({ label, value, onChange, options }) {
       </select>
     </div>
   );
-         }
+}
+
+function SponsorLogoUpload({ sponsorId, onUploaded }) {
+  const supabase = createClient();
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const upload = async () => {
+    if (!file) return;
+    setUploading(true);
+    const path = `sponsor-${sponsorId}-${Date.now()}.${file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, file);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      onUploaded(pub.publicUrl);
+    }
+    setFile(null);
+    setUploading(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-3 text-xs cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+        <Upload size={14}/> {file ? file.name : "Choose logo image"}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      </label>
+      {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
+    </div>
+  );
+}
+
+function ProductPhotoUpload({ productId, onUploaded }) {
+  const supabase = createClient();
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const upload = async () => {
+    if (!file) return;
+    setUploading(true);
+    const path = `product-${productId}-${Date.now()}.${file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, file);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      onUploaded(pub.publicUrl);
+    }
+    setFile(null);
+    setUploading(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-3 text-xs cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+        <Upload size={14}/> {file ? file.name : "Choose product photo"}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      </label>
+      {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
+    </div>
+  );
+}
