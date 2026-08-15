@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 
 export async function POST(req) {
-  const { registration_id, amount, name, email, phone } = await req.json();
+  const { registration_code, amount, name, email, phone } = await req.json();
 
   const key = process.env.PAYU_MERCHANT_KEY;
   const salt = process.env.PAYU_MERCHANT_SALT;
@@ -12,7 +12,7 @@ export async function POST(req) {
     return NextResponse.json({ error: "PayU is not configured." }, { status: 500 });
   }
 
-  const txnid = `REG${registration_id ? registration_id.replace(/-/g, "").slice(0, 15) : Date.now()}`;
+  const txnid = `REG${registration_code}`;
   const productinfo = "Event Registration";
   const firstname = name || "Guest";
   const emailVal = email || "guest@apexathletics.run";
