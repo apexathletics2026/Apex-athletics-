@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [savingFounder, setSavingFounder] = useState(false);
   const [founderPhotoFile, setFounderPhotoFile] = useState(null);
   const [founderSigFile, setFounderSigFile] = useState(null);
+  const [team, setTeam] = useState([]);
   const [expandedReg, setExpandedReg] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
 
@@ -57,6 +58,8 @@ export default function AdminPage() {
     setCertificates(cert || []);
     const { data: fd } = await supabase.from("website_settings").select("value").eq("key", "founder").maybeSingle();
     if (fd?.value) setFounder(fd.value);
+    const { data: tm } = await supabase.from("team_members").select("*").order("sort_order");
+    setTeam(tm || []);
   };
 
   const saveFooter = async (patch) => {
@@ -173,6 +176,22 @@ export default function AdminPage() {
     setSavingFounder(false);
   };
 
+  const addTeamMember = async () => {
+    await supabase.from("team_members").insert({ name: "New Member", role: "Founder" });
+    loadAll();
+  };
+  const updateTeamMember = async (id, patch) => { await supabase.from("team_members").update(patch).eq("id", id); loadAll(); };
+  const deleteTeamMember = async (id) => { await supabase.from("team_members").delete().eq("id", id); loadAll(); };
+  const uploadTeamPhoto = async (id, file) => {
+    if (!file) return;
+    const path = `team-${id}-${Date.now()}.${file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, file);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      await updateTeamMember(id, { photo_url: pub.publicUrl });
+    }
+  };
+
   if (checking) return <div className="max-w-6xl mx-auto px-5 py-20 text-center text-muted">Checking access…</div>;
 
   if (!isAdmin) {
@@ -185,7 +204,7 @@ export default function AdminPage() {
     );
   }
 
-  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder"];
+  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder", "team"];
   const totalRegs = registrations.length;
   const offlineRegs = registrations.filter(r => r.payment_method === "Offline").length;
   const onlineRegs = totalRegs - offlineRegs;
@@ -263,7 +282,7 @@ export default function AdminPage() {
         </div>
       )}
 
-{tab === "sponsors" && (
+      {tab === "sponsors" && (
         <div>
           <button className="btn btn-primary mb-5" onClick={addSponsor}><Plus size={15}/> Add Sponsor</button>
           <div className="space-y-3">
@@ -272,11 +291,6 @@ export default function AdminPage() {
                 <div className="grid sm:grid-cols-2 gap-3 mb-3">
                   <TF label="Name" value={s.name} onBlur={(v) => updateSponsor(s.id, { name: v })} />
                   <SF label="Category" value={s.category} onChange={(v) => updateSponsor(s.id, { category: v })} options={["Title Sponsor", "Gold Sponsor", "Silver Sponsor", "Partner", "Supporting Partner", "Media Partner"]} />
-                  <TF label="Website Link" value={s.website} onBlur={(v) => updateSponsor(s.id, { website: v })} />
-                </div>
-                <div className="mb-3">
-                  {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-16 object-contain border mb-2" style={{ borderColor: "#E7E2D9" }} />}
-                  <SponsorLogoUpload sponsorId={s.id} onUploaded={(url) => updateSponsor(s.id, { logo_url: url })} />
                 </div>
                 <button onClick={() => deleteSponsor(s.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
               </div>
@@ -475,6 +489,33 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+      {tab === "team" && (
+        <div>
+          <button className="btn btn-primary mb-5" onClick={addTeamMember}><Plus size={15}/> Add Founder / Co-Founder</button>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {team.map((m) => (
+              <div key={m.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
+                {m.photo_url && <img src={m.photo_url} alt={m.name} className="w-20 h-20 rounded-full object-cover mb-3" />}
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-3 text-xs cursor-pointer text-muted mb-3" style={{ borderColor: "#E7E2D9" }}>
+                  <Upload size={14}/> Choose photo
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadTeamPhoto(m.id, e.target.files?.[0])} />
+                </label>
+                <div className="space-y-3">
+                  <TF label="Name" value={m.name} onBlur={(v) => updateTeamMember(m.id, { name: v })} />
+                  <SF label="Role" value={m.role} onChange={(v) => updateTeamMember(m.id, { role: v })} options={["Founder", "Co-Founder"]} />
+                  <TF label="Bio" value={m.bio} onBlur={(v) => updateTeamMember(m.id, { bio: v })} />
+                  <TF label="Instagram URL" value={m.instagram} onBlur={(v) => updateTeamMember(m.id, { instagram: v })} />
+                  <TF label="Facebook URL" value={m.facebook} onBlur={(v) => updateTeamMember(m.id, { facebook: v })} />
+                  <TF label="Twitter / X URL" value={m.twitter} onBlur={(v) => updateTeamMember(m.id, { twitter: v })} />
+                  <TF label="LinkedIn URL" value={m.linkedin} onBlur={(v) => updateTeamMember(m.id, { linkedin: v })} />
+                </div>
+                <button onClick={() => deleteTeamMember(m.id)} className="text-xs font-bold flex items-center gap-1 mt-3" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
+              </div>
+            ))}
+            {team.length === 0 && <p className="text-sm text-muted">No team members yet.</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -506,32 +547,4 @@ function SF({ label, value, onChange, options }) {
       </select>
     </div>
   );
-    }
-function SponsorLogoUpload({ sponsorId, onUploaded }) {
-  const supabase = createClient();
-  const [file, setFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-
-  const upload = async () => {
-    if (!file) return;
-    setUploading(true);
-    const path = `sponsor-${sponsorId}-${Date.now()}.${file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("site-assets").upload(path, file);
-    if (!error) {
-      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
-      onUploaded(pub.publicUrl);
-    }
-    setFile(null);
-    setUploading(false);
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-3 text-xs cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
-        <Upload size={14}/> {file ? file.name : "Choose logo image"}
-        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-      </label>
-      {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
-    </div>
-  );
-                                   }
+         }
