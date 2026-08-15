@@ -9,24 +9,28 @@ export async function POST(req) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://apex-athletics-jb11.vercel.app";
 
   if (!key || !salt) {
-    return NextResponse.json({ error: "PayU is not configured. Check environment variables." }, { status: 500 });
+    return NextResponse.json({ error: "PayU is not configured." }, { status: 500 });
   }
 
   const txnid = `REG${registration_id ? registration_id.replace(/-/g, "").slice(0, 15) : Date.now()}`;
   const productinfo = "Event Registration";
   const firstname = name || "Guest";
+  const emailVal = email || "guest@apexathletics.run";
+  const phoneVal = phone || "9999999999";
+  const amountVal = String(amount);
 
-  const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}||||||||||${salt}`;
+  const udfs = ["", "", "", "", "", "", "", "", "", ""];
+  const hashString = [key, txnid, amountVal, productinfo, firstname, emailVal, ...udfs, salt].join("|");
   const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
   return NextResponse.json({
     action: "https://secure.payu.in/_payment",
     params: {
-      key, txnid, amount: String(amount), productinfo, firstname, email: email || "guest@apexathletics.run", phone: phone || "9999999999",
+      key, txnid, amount: amountVal, productinfo, firstname, email: emailVal, phone: phoneVal,
       surl: `${siteUrl}/api/payu/verify`,
       furl: `${siteUrl}/api/payu/verify`,
       hash,
       service_provider: "payu_paisa",
     },
   });
-}
+    }
