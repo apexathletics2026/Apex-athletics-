@@ -25,7 +25,8 @@ export async function POST(req) {
     const supabase = createClient();
 
     if (verified) {
-      await supabase.from("event_registrations").update({ status: "Confirmed" }).eq("registration_code", txnid.replace(/^REG/, ""));
+const mihpayid = data.mihpayid || "";
+      await supabase.from("event_registrations").update({ status: "Confirmed", payment_transaction_id: mihpayid }).eq("registration_code", txnid.replace(/^REG/, ""));
       return NextResponse.redirect(new URL(`/payment-success?txnid=${txnid}`, req.url), 303);
     }
 
