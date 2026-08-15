@@ -507,3 +507,31 @@ function SF({ label, value, onChange, options }) {
     </div>
   );
     }
+function SponsorLogoUpload({ sponsorId, onUploaded }) {
+  const supabase = createClient();
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const upload = async () => {
+    if (!file) return;
+    setUploading(true);
+    const path = `sponsor-${sponsorId}-${Date.now()}.${file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, file);
+    if (!error) {
+      const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+      onUploaded(pub.publicUrl);
+    }
+    setFile(null);
+    setUploading(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-3 text-xs cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+        <Upload size={14}/> {file ? file.name : "Choose logo image"}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      </label>
+      {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
+    </div>
+  );
+                                   }
