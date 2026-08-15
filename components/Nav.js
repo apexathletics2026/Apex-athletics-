@@ -22,6 +22,7 @@ export default function Nav() {
     ["/store", "Store"],
     ["/sponsors", "Sponsors"],
     ["/certificate", "Certificate"],
+    ["/check-registration", "Check Status"],
     ["/about", "About"],
     ["/contact", "Contact"],
   ];
@@ -38,7 +39,7 @@ export default function Nav() {
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="hidden md:flex items-center gap-5">
           {links.map(([href, label]) => (
             <Link key={href} href={href} className="text-sm font-bold uppercase tracking-wide text-ink hover:text-accent">
               {label}
@@ -67,4 +68,4 @@ export default function Nav() {
       )}
     </div>
   );
-  }
+    }
