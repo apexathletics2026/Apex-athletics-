@@ -111,25 +111,28 @@ export default async function Home() {
         </section>
       )}
 
-      {sponsors?.length > 0 && (
+{sponsors?.length > 0 && (
         <section className="py-16 bg-ink">
           <div className="max-w-6xl mx-auto px-5">
-            <Reveal>
-              <div className="text-xs font-bold tracking-[0.2em] uppercase mb-6 text-white/50">Our Sponsors</div>
-              <div className="flex flex-wrap gap-x-10 gap-y-4">
-                {sponsors.map((s) => (
-                  <span key={s.id} className="text-white/80 font-bold text-lg tracking-tight">
-                    {s.name}
-                  </span>
-                ))}
-              </div>
-            </Reveal>
+            <div className="text-xs font-bold tracking-[0.2em] uppercase mb-6 text-white/50">Our Sponsors</div>
+            <div className="flex flex-wrap items-center gap-x-10 gap-y-6">
+              {sponsors.map((s) => (
+                s.website ? (
+                  <a key={s.id} href={s.website} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:opacity-80">
+                    {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-8 object-contain" />}
+                    <span className="text-white/80 font-bold text-lg tracking-tight">{s.name}</span>
+                  </a>
+                ) : (
+                  <div key={s.id} className="flex items-center gap-2">
+                    {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-8 object-contain" />}
+                    <span className="text-white/80 font-bold text-lg tracking-tight">{s.name}</span>
+                  </div>
+                )
+              ))}
+            </div>
           </div>
         </section>
       )}
-    </div>
-  );
-}
 
 function EventCard({ e }) {
   return (
