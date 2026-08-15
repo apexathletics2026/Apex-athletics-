@@ -263,7 +263,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === "sponsors" && (
+{tab === "sponsors" && (
         <div>
           <button className="btn btn-primary mb-5" onClick={addSponsor}><Plus size={15}/> Add Sponsor</button>
           <div className="space-y-3">
@@ -272,6 +272,11 @@ export default function AdminPage() {
                 <div className="grid sm:grid-cols-2 gap-3 mb-3">
                   <TF label="Name" value={s.name} onBlur={(v) => updateSponsor(s.id, { name: v })} />
                   <SF label="Category" value={s.category} onChange={(v) => updateSponsor(s.id, { category: v })} options={["Title Sponsor", "Gold Sponsor", "Silver Sponsor", "Partner", "Supporting Partner", "Media Partner"]} />
+                  <TF label="Website Link" value={s.website} onBlur={(v) => updateSponsor(s.id, { website: v })} />
+                </div>
+                <div className="mb-3">
+                  {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-16 object-contain border mb-2" style={{ borderColor: "#E7E2D9" }} />}
+                  <SponsorLogoUpload sponsorId={s.id} onUploaded={(url) => updateSponsor(s.id, { logo_url: url })} />
                 </div>
                 <button onClick={() => deleteSponsor(s.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
               </div>
