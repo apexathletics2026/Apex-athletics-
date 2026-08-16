@@ -42,14 +42,15 @@ export default function AdminPage() {
   }, []);
 
   const loadAll = async () => {
-    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }] = await Promise.all([
+    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }, { data: tm }] = await Promise.all([
       supabase.from("events").select("*").order("event_date"),
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("sponsors").select("*").order("sort_order"),
       supabase.from("event_registrations").select("*, events(name)").order("created_at", { ascending: false }),
       supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: false }),
+      supabase.from("team_members").select("*").order("sort_order"),
     ]);
-    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []);
+    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []); setTeam(tm || []);
     const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
     if (s?.value) setUpi(s.value);
     const { data: f } = await supabase.from("website_settings").select("value").eq("key", "footer_contact").maybeSingle();
@@ -58,8 +59,6 @@ export default function AdminPage() {
     setCertificates(cert || []);
     const { data: fd } = await supabase.from("website_settings").select("value").eq("key", "founder").maybeSingle();
     if (fd?.value) setFounder(fd.value);
-    const { data: tm } = await supabase.from("team_members").select("*").order("sort_order");
-    setTeam(tm || []);
   };
 
   const saveFooter = async (patch) => {
@@ -206,7 +205,7 @@ export default function AdminPage() {
 
   const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder", "team"];
   const totalRegs = registrations.length;
-  const offlineRegs = registrations.filter(r => r.payment_method === "Offline").length;
+  const offlineRegs = registrations.filter((r) => r.payment_method === "Offline").length;
   const onlineRegs = totalRegs - offlineRegs;
   const stats = [
     ["Total Events", events.length],
@@ -216,7 +215,7 @@ export default function AdminPage() {
     ["Orders", orders.length],
     ["Products", products.length],
     ["Sponsors", sponsors.length],
-    ["Pending Payments", registrations.filter(r => r.status !== "Confirmed").length + orders.filter(o => o.payment_status !== "Paid").length],
+    ["Pending Payments", registrations.filter((r) => r.status !== "Confirmed").length + orders.filter((o) => o.payment_status !== "Paid").length],
   ];
 
   return (
@@ -347,7 +346,6 @@ export default function AdminPage() {
                           <TF label="Full Name" value={r.full_name} onBlur={(v) => updateRegistration(r.id, { full_name: v })} />
                           <TF label="Mobile" value={r.mobile} onBlur={(v) => updateRegistration(r.id, { mobile: v })} />
                           <TF label="Address" value={r.address} onBlur={(v) => updateRegistration(r.id, { address: v })} />
-                          <SF label="Event" value={r.event_id || ""} onChange={(v) => updateRegistration(r.id, { event_id: v })} options={events.map(e => e.id)} />
                         </div>
                       ) : (
                         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
@@ -386,11 +384,6 @@ export default function AdminPage() {
                     <div className="text-xs font-bold mt-1" style={{ color: o.payment_status === "Paid" ? "#1B7A3B" : "#C43D0E" }}>{o.payment_status}</div>
                   </button>
                   <div className="flex items-center gap-3">
-                    {o.payment_screenshot_url && (
-                      <a href={o.payment_screenshot_url} target="_blank" rel="noreferrer">
-                        <img src={o.payment_screenshot_url} alt="Payment proof" className="w-14 h-14 object-cover border rounded-sm" style={{ borderColor: "#E7E2D9" }} />
-                      </a>
-                    )}
                     {o.payment_status !== "Paid" ? (
                       <button onClick={() => approveOrder(o.id)} className="btn btn-primary !py-2 !px-4 !text-xs">Mark Paid</button>
                     ) : (
@@ -502,6 +495,7 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
       {tab === "team" && (
         <div>
           <button className="btn btn-primary mb-5" onClick={addTeamMember}><Plus size={15}/> Add Founder / Co-Founder</button>
@@ -561,7 +555,6 @@ function SF({ label, value, onChange, options }) {
     </div>
   );
 }
-
 function SponsorLogoUpload({ sponsorId, onUploaded }) {
   const supabase = createClient();
   const [file, setFile] = useState(null);
@@ -590,7 +583,6 @@ function SponsorLogoUpload({ sponsorId, onUploaded }) {
     </div>
   );
 }
-
 function ProductPhotoUpload({ productId, onUploaded }) {
   const supabase = createClient();
   const [file, setFile] = useState(null);
@@ -618,4 +610,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-}
+     }
