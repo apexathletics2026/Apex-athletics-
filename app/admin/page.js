@@ -27,6 +27,7 @@ export default function AdminPage() {
   const [founderPhotoFile, setFounderPhotoFile] = useState(null);
   const [founderSigFile, setFounderSigFile] = useState(null);
   const [team, setTeam] = useState([]);
+  const [newSerial, setNewSerial] = useState("");
   const [visits, setVisits] = useState([]);
   const [expandedReg, setExpandedReg] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
@@ -101,10 +102,10 @@ export default function AdminPage() {
   const deleteRegistration = async (id) => { await supabase.from("event_registrations").delete().eq("id", id); loadAll(); };
 
   const addOfflineRegistration = async () => {
-    const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code");
-    if (codeError || !codeData) return;
-    await supabase.from("event_registrations").insert({
-      registration_code: codeData,
+    if (!newSerial.trim()) { alert("Please enter a serial number."); return; }
+    const code = `APX-${newSerial.trim()}`;
+    const { error } = await supabase.from("event_registrations").insert({
+      registration_code: code,
       event_id: events[0]?.id || null,
       full_name: "New Offline Registrant",
       mobile: "",
@@ -112,6 +113,8 @@ export default function AdminPage() {
       payment_method: "Offline",
       status: "Confirmed",
     });
+    if (error) { alert("That serial number is already used, or something went wrong: " + error.message); return; }
+    setNewSerial("");
     loadAll();
   };
 
@@ -318,7 +321,13 @@ export default function AdminPage() {
 
       {tab === "registrations" && (
         <div>
-          <button className="btn btn-primary mb-5" onClick={addOfflineRegistration}><Plus size={15}/> Add Offline Registration</button>
+          <div className="flex flex-wrap items-end gap-3 mb-5">
+            <div>
+              <label className="field-label">Serial Number</label>
+              <input className="field-input" style={{ width: 140 }} value={newSerial} onChange={(e) => setNewSerial(e.target.value)} placeholder="e.g. 330" />
+            </div>
+            <button className="btn btn-primary" onClick={addOfflineRegistration}><Plus size={15}/> Add Offline Registration</button>
+          </div>
           <div className="space-y-3">
             {registrations.map((r) => {
               const open = expandedReg === r.id;
@@ -707,4 +716,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-        }
+    }
