@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, Plus, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 export default function AdminPage() {
   const supabase = createClient();
@@ -26,6 +27,7 @@ export default function AdminPage() {
   const [founderPhotoFile, setFounderPhotoFile] = useState(null);
   const [founderSigFile, setFounderSigFile] = useState(null);
   const [team, setTeam] = useState([]);
+  const [visits, setVisits] = useState([]);
   const [expandedReg, setExpandedReg] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
 
@@ -59,6 +61,9 @@ export default function AdminPage() {
     setCertificates(cert || []);
     const { data: fd } = await supabase.from("website_settings").select("value").eq("key", "founder").maybeSingle();
     if (fd?.value) setFounder(fd.value);
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: vs } = await supabase.from("site_visits").select("created_at").gte("created_at", since);
+    setVisits(vs || []);
   };
 
   const saveFooter = async (patch) => {
@@ -203,7 +208,7 @@ export default function AdminPage() {
     );
   }
 
-  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder", "team"];
+  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder", "team", "analytics"];
   const totalRegs = registrations.length;
   const offlineRegs = registrations.filter((r) => r.payment_method === "Offline").length;
   const onlineRegs = totalRegs - offlineRegs;
@@ -523,6 +528,98 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {tab === "analytics" && (
+        <AnalyticsPanel visits={visits} registrations={registrations} orders={orders} />
+      )}
+    </div>
+  );
+}
+
+function AnalyticsPanel({ visits, registrations, orders }) {
+  const now = Date.now();
+  const hourAgo = now - 60 * 60 * 1000;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
+  const inWindow = (rows, sinceMs) => rows.filter((r) => new Date(r.created_at).getTime() >= sinceMs).length;
+
+  const visitStats = [
+    ["Last Hour", inWindow(visits, hourAgo)],
+    ["Today", inWindow(visits, todayStart.getTime())],
+    ["Last 30 Days", visits.length],
+  ];
+  const regStats = [
+    ["Last Hour", inWindow(registrations, hourAgo)],
+    ["Today", inWindow(registrations, todayStart.getTime())],
+    ["Last 30 Days", inWindow(registrations, now - 30 * 24 * 60 * 60 * 1000)],
+  ];
+  const orderStats = [
+    ["Last Hour", inWindow(orders, hourAgo)],
+    ["Today", inWindow(orders, todayStart.getTime())],
+    ["Last 30 Days", inWindow(orders, now - 30 * 24 * 60 * 60 * 1000)],
+  ];
+
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    const label = `${d.getDate()}/${d.getMonth() + 1}`;
+    const count = visits.filter((v) => v.created_at.slice(0, 10) === key).length;
+    days.push({ label, count });
+  }
+
+  return (
+    <div>
+      <div className="mb-8">
+        <div className="text-xs font-bold uppercase tracking-wide text-accentDark mb-3">Visitors</div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {visitStats.map(([label, value]) => (
+            <div key={label} className="border rounded-sm p-5" style={{ borderColor: "#E7E2D9" }}>
+              <div className="text-2xl font-black text-ink">{value}</div>
+              <div className="text-xs uppercase font-bold text-muted">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <div className="text-xs font-bold uppercase tracking-wide text-accentDark mb-3">Registrations</div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {regStats.map(([label, value]) => (
+            <div key={label} className="border rounded-sm p-5" style={{ borderColor: "#E7E2D9" }}>
+              <div className="text-2xl font-black text-ink">{value}</div>
+              <div className="text-xs uppercase font-bold text-muted">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <div className="text-xs font-bold uppercase tracking-wide text-accentDark mb-3">Orders</div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {orderStats.map(([label, value]) => (
+            <div key={label} className="border rounded-sm p-5" style={{ borderColor: "#E7E2D9" }}>
+              <div className="text-2xl font-black text-ink">{value}</div>
+              <div className="text-xs uppercase font-bold text-muted">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs font-bold uppercase tracking-wide text-accentDark mb-3">Visitors — Last 30 Days</div>
+        <div className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9", height: 280 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={days}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E7E2D9" />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={2} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#E8A93B" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 }
@@ -610,4 +707,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-     }
+}
