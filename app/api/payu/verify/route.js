@@ -25,13 +25,22 @@ export async function POST(req) {
     const supabase = createClient();
 
     if (verified) {
+      const tempCode = txnid.replace(/^REG/, "");
       const mihpayid = data.mihpayid || "";
-      await supabase.from("event_registrations").update({ status: "Confirmed", payment_transaction_id: mihpayid }).eq("registration_code", txnid.replace(/^REG/, ""));
-      return NextResponse.redirect(new URL(`/payment-success?txnid=${txnid}`, req.url), 303);
+
+      const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code");
+      const finalCode = !codeError && codeData ? codeData : tempCode;
+
+      await supabase
+        .from("event_registrations")
+        .update({ status: "Confirmed", registration_code: finalCode, payment_transaction_id: mihpayid })
+        .eq("registration_code", tempCode);
+
+      return NextResponse.redirect(new URL(`/payment-success?txnid=${finalCode}`, req.url), 303);
     }
 
     return NextResponse.redirect(new URL(`/payment-failed?txnid=${txnid}`, req.url), 303);
   } catch (e) {
     return NextResponse.redirect(new URL(`/payment-failed`, req.url), 303);
   }
-  }
+                                }
