@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { CheckCircle2, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function RegisterPage({ params }) {
@@ -9,7 +9,6 @@ export default function RegisterPage({ params }) {
   const [event, setEvent] = useState(null);
   const [user, setUser] = useState(null);
   const [step, setStep] = useState(1);
-  const [regCode, setRegCode] = useState("");
   const [err, setErr] = useState("");
   const [paying, setPaying] = useState(false);
   const formRef = useRef(null);
@@ -36,13 +35,11 @@ export default function RegisterPage({ params }) {
     setErr("");
     setPaying(true);
 
-    const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code");
-    if (codeError || !codeData) { setErr("Could not generate a registration number. Please try again."); setPaying(false); return; }
-    const registrationCode = codeData;
+    const tempCode = `TMP${Date.now()}`;
 
     const { data: u } = await supabase.auth.getUser();
     const { data: reg, error } = await supabase.from("event_registrations").insert({
-      registration_code: registrationCode,
+      registration_code: tempCode,
       event_id: event.id,
       user_id: u?.user?.id || null,
       full_name: form.fullName,
@@ -66,10 +63,8 @@ export default function RegisterPage({ params }) {
     fetch("/api/notify-registration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName: form.fullName, eventName: event.name, mobile: form.mobile, registrationCode }),
+      body: JSON.stringify({ fullName: form.fullName, eventName: event.name, mobile: form.mobile, registrationCode: "Pending payment" }),
     }).catch(() => {});
-
-    setRegCode(registrationCode);
 
     const res = await fetch("/api/payu/initiate", {
       method: "POST",
