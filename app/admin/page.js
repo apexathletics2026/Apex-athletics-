@@ -28,6 +28,8 @@ export default function AdminPage() {
   const [founderSigFile, setFounderSigFile] = useState(null);
   const [team, setTeam] = useState([]);
   const [newSerial, setNewSerial] = useState("");
+  const [mediaList, setMediaList] = useState([]);
+  const [mediaFilter, setMediaFilter] = useState("Pending");
   const [visits, setVisits] = useState([]);
   const [expandedReg, setExpandedReg] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
@@ -45,15 +47,16 @@ export default function AdminPage() {
   }, []);
 
   const loadAll = async () => {
-    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }, { data: tm }] = await Promise.all([
+    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }, { data: tm }, { data: md }] = await Promise.all([
       supabase.from("events").select("*").order("event_date"),
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("sponsors").select("*").order("sort_order"),
       supabase.from("event_registrations").select("*, events(name)").order("created_at", { ascending: false }),
       supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: false }),
       supabase.from("team_members").select("*").order("sort_order"),
+      supabase.from("athlete_media").select("*, certificates(certificate_number)").order("created_at", { ascending: false }),
     ]);
-    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []); setTeam(tm || []);
+    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []); setTeam(tm || []); setMediaList(md || []);
     const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
     if (s?.value) setUpi(s.value);
     const { data: f } = await supabase.from("website_settings").select("value").eq("key", "footer_contact").maybeSingle();
@@ -100,6 +103,7 @@ export default function AdminPage() {
   const rejectRegistration = async (id) => { await supabase.from("event_registrations").update({ status: "Pending Payment" }).eq("id", id); loadAll(); };
   const updateRegistration = async (id, patch) => { await supabase.from("event_registrations").update(patch).eq("id", id); loadAll(); };
   const deleteRegistration = async (id) => { await supabase.from("event_registrations").delete().eq("id", id); loadAll(); };
+  const linkRegCertificate = async (id, certId) => { await supabase.from("event_registrations").update({ certificate_id: certId || null }).eq("id", id); loadAll(); };
 
   const addOfflineRegistration = async () => {
     if (!newSerial.trim()) { alert("Please enter a serial number."); return; }
@@ -199,6 +203,12 @@ export default function AdminPage() {
     }
   };
 
+  const approveMedia = async (id) => { await supabase.from("athlete_media").update({ status: "Approved" }).eq("id", id); loadAll(); };
+  const rejectMedia = async (id) => { await supabase.from("athlete_media").update({ status: "Rejected" }).eq("id", id); loadAll(); };
+  const deleteMedia = async (id) => { await supabase.from("athlete_media").delete().eq("id", id); loadAll(); };
+  const updateMedia = async (id, patch) => { await supabase.from("athlete_media").update(patch).eq("id", id); loadAll(); };
+  const linkCertificate = async (id, certId) => { await supabase.from("athlete_media").update({ certificate_id: certId || null }).eq("id", id); loadAll(); };
+
   if (checking) return <div className="max-w-6xl mx-auto px-5 py-20 text-center text-muted">Checking access…</div>;
 
   if (!isAdmin) {
@@ -211,7 +221,7 @@ export default function AdminPage() {
     );
   }
 
-  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder", "team", "analytics"];
+  const tabs = ["overview", "events", "products", "sponsors", "registrations", "orders", "payment settings", "site settings", "certificates", "founder", "team", "analytics", "media"];
   const totalRegs = registrations.length;
   const offlineRegs = registrations.filter((r) => r.payment_method === "Offline").length;
   const onlineRegs = totalRegs - offlineRegs;
@@ -224,6 +234,8 @@ export default function AdminPage() {
     ["Products", products.length],
     ["Sponsors", sponsors.length],
     ["Pending Payments", registrations.filter((r) => r.status !== "Confirmed").length + orders.filter((o) => o.payment_status !== "Paid").length],
+    ["Pending Media", mediaList.filter((m) => m.status === "Pending").length],
+    ["Approved Media", mediaList.filter((m) => m.status === "Approved").length],
   ];
 
   return (
@@ -375,6 +387,13 @@ export default function AdminPage() {
                           <Row label="Submitted" value={new Date(r.created_at).toLocaleString()} />
                         </div>
                       )}
+                      <div className="mt-3 pt-3 border-t" style={{ borderColor: "#E7E2D9" }}>
+                        <label className="field-label">Attach Certificate (participant can then download it using this same registration number)</label>
+                        <select className="field-input" defaultValue={r.certificate_id || ""} onChange={(e) => linkRegCertificate(r.id, e.target.value)}>
+                          <option value="">None</option>
+                          {certificates.map((c) => <option key={c.id} value={c.id}>{c.certificate_number} — {c.full_name}</option>)}
+                        </select>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -534,6 +553,58 @@ export default function AdminPage() {
               </div>
             ))}
             {team.length === 0 && <p className="text-sm text-muted">No team members yet.</p>}
+          </div>
+        </div>
+      )}
+
+      {tab === "media" && (
+        <div>
+          <div className="flex gap-2 mb-5">
+            {["Pending", "Approved", "Rejected", "All"].map((f) => (
+              <button key={f} onClick={() => setMediaFilter(f)} className="text-xs font-bold uppercase px-3 py-1.5 rounded-full border"
+                style={{ borderColor: mediaFilter === f ? "#C6FF00" : "#262626", background: mediaFilter === f ? "#C6FF00" : "transparent", color: mediaFilter === f ? "#0A0A0A" : "#F5F5F0" }}>
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {mediaList.filter((m) => mediaFilter === "All" || m.status === mediaFilter).map((m) => (
+              <div key={m.id} className="border rounded-sm p-4" style={{ borderColor: "#262626" }}>
+                <div className="flex gap-3 mb-3">
+                  <div className="w-20 h-20 bg-black/40 rounded-sm overflow-hidden shrink-0">
+                    {m.media_type === "video" ? (
+                      <video src={m.media_url} className="w-full h-full object-cover" muted />
+                    ) : (
+                      <img src={m.media_url} alt="" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">{m.athlete_name}</div>
+                    <div className="text-xs text-muted mb-1">{m.caption}</div>
+                    <div className="text-xs font-bold" style={{ color: m.status === "Approved" ? "#1B7A3B" : m.status === "Rejected" ? "#B3271E" : "#C6FF00" }}>{m.status}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <TF label="Views" type="number" value={m.views} onBlur={(v) => updateMedia(m.id, { views: Number(v) })} />
+                  <TF label="Likes" type="number" value={m.likes} onBlur={(v) => updateMedia(m.id, { likes: Number(v) })} />
+                </div>
+                <div className="mb-3">
+                  <label className="field-label">Attach Certificate (optional)</label>
+                  <select className="field-input" defaultValue={m.certificate_id || ""} onChange={(e) => linkCertificate(m.id, e.target.value)}>
+                    <option value="">None</option>
+                    {certificates.map((c) => <option key={c.id} value={c.id}>{c.certificate_number} — {c.full_name}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {m.status !== "Approved" && <button onClick={() => approveMedia(m.id)} className="btn btn-primary !py-2 !px-3 !text-xs">Approve</button>}
+                  {m.status !== "Rejected" && <button onClick={() => rejectMedia(m.id)} className="btn btn-outline !py-2 !px-3 !text-xs">Reject</button>}
+                  <button onClick={() => deleteMedia(m.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
+                </div>
+              </div>
+            ))}
+            {mediaList.filter((m) => mediaFilter === "All" || m.status === mediaFilter).length === 0 && (
+              <p className="text-sm text-muted">No posts in this filter.</p>
+            )}
           </div>
         </div>
       )}
@@ -716,4 +787,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-    }
+                                        }
