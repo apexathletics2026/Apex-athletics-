@@ -9,7 +9,7 @@ export default function CertificatePage() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState(null);
   const [notFound, setNotFound] = useState(false);
-  const [notIssued, setNotIssued] = useState(false);
+  const [notConfirmed, setNotConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [founder, setFounder] = useState({ name: "", signature_url: "" });
 
@@ -24,12 +24,12 @@ export default function CertificatePage() {
     if (!query.trim()) return;
     setLoading(true);
     setNotFound(false);
-    setNotIssued(false);
+    setNotConfirmed(false);
     setResult(null);
 
     const raw = query.trim();
 
-    // 1. Try matching a certificate directly (certificate_number or bib_number)
+    // 1. Special/manual certificate entries (e.g. top winners with custom details) take priority
     const { data: directCert } = await supabase
       .from("certificates")
       .select("*")
@@ -42,26 +42,36 @@ export default function CertificatePage() {
       return;
     }
 
-    // 2. Try matching the registration serial (with or without APX- prefix)
+    // 2. Every confirmed registration auto-generates its own certificate
     const codeVariants = raw.toUpperCase().startsWith("APX") ? [raw.toUpperCase()] : [raw, `APX-${raw}`, `APX-2026-${raw}`];
     const { data: reg } = await supabase
       .from("event_registrations")
-      .select("*, certificates(*)")
+      .select("*, events(name, category)")
       .in("registration_code", codeVariants)
       .maybeSingle();
 
     setLoading(false);
 
     if (!reg) { setNotFound(true); return; }
-    if (reg.certificates) { setResult(reg.certificates); return; }
-    setNotIssued(true);
+    if (reg.status !== "Confirmed") { setNotConfirmed(true); return; }
+
+    setResult({
+      certificate_number: reg.registration_code,
+      bib_number: reg.registration_code,
+      full_name: reg.full_name,
+      event_name: reg.events?.name || "",
+      category: reg.events?.category || "",
+      finish_time: reg.finish_time || "",
+      position: reg.position || "",
+      created_at: reg.created_at,
+    });
   };
 
   return (
     <div className="max-w-xl mx-auto px-5 py-14">
       <div className="text-xs font-bold tracking-[0.2em] uppercase text-accent mb-3">Verify</div>
       <h1 className="font-black text-3xl mb-2 text-ink">Certificate Lookup</h1>
-      <p className="text-sm text-muted mb-8">Enter your registration number, bib number, or certificate number to view and download your finisher certificate.</p>
+      <p className="text-sm text-muted mb-8">Enter your registration number to view and download your finisher certificate.</p>
 
       <div className="flex gap-2 mb-8">
         <input
@@ -82,9 +92,9 @@ export default function CertificatePage() {
         </div>
       )}
 
-      {notIssued && (
+      {notConfirmed && (
         <div className="border rounded-sm p-6 text-center text-sm text-muted" style={{ borderColor: "#262626" }}>
-          Your registration was found, but a certificate hasn't been issued yet for this number. Please check back after the event.
+          This registration was found but payment hasn't been confirmed yet. Certificates are issued after payment is confirmed.
         </div>
       )}
 
@@ -131,4 +141,4 @@ function Detail({ label, value }) {
       <div className="font-bold text-sm text-black">{value}</div>
     </div>
   );
-    }
+      }
