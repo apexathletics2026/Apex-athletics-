@@ -9,6 +9,7 @@ export default function CertificatePage() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState(null);
   const [notFound, setNotFound] = useState(false);
+  const [notIssued, setNotIssued] = useState(false);
   const [loading, setLoading] = useState(false);
   const [founder, setFounder] = useState({ name: "", signature_url: "" });
 
@@ -23,27 +24,49 @@ export default function CertificatePage() {
     if (!query.trim()) return;
     setLoading(true);
     setNotFound(false);
+    setNotIssued(false);
     setResult(null);
-    const { data } = await supabase
+
+    const raw = query.trim();
+
+    // 1. Try matching a certificate directly (certificate_number or bib_number)
+    const { data: directCert } = await supabase
       .from("certificates")
       .select("*")
-      .or(`certificate_number.eq.${query.trim()},bib_number.eq.${query.trim()}`)
+      .or(`certificate_number.eq.${raw},bib_number.eq.${raw}`)
       .maybeSingle();
+
+    if (directCert) {
+      setResult(directCert);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Try matching the registration serial (with or without APX- prefix)
+    const codeVariants = raw.toUpperCase().startsWith("APX") ? [raw.toUpperCase()] : [raw, `APX-${raw}`, `APX-2026-${raw}`];
+    const { data: reg } = await supabase
+      .from("event_registrations")
+      .select("*, certificates(*)")
+      .in("registration_code", codeVariants)
+      .maybeSingle();
+
     setLoading(false);
-    if (data) setResult(data);
-    else setNotFound(true);
+
+    if (!reg) { setNotFound(true); return; }
+    if (reg.certificates) { setResult(reg.certificates); return; }
+    setNotIssued(true);
   };
 
   return (
     <div className="max-w-xl mx-auto px-5 py-14">
       <div className="text-xs font-bold tracking-[0.2em] uppercase text-accent mb-3">Verify</div>
       <h1 className="font-black text-3xl mb-2 text-ink">Certificate Lookup</h1>
-      <p className="text-sm text-muted mb-8">Enter your certificate number or bib number to view, verify and download your finisher certificate.</p>
+      <p className="text-sm text-muted mb-8">Enter your registration number, bib number, or certificate number to view and download your finisher certificate.</p>
 
       <div className="flex gap-2 mb-8">
         <input
           className="field-input flex-1"
-          placeholder="e.g. CERT-1234 or bib number"
+          placeholder="e.g. 220 or APX-220"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && search()}
@@ -55,7 +78,13 @@ export default function CertificatePage() {
 
       {notFound && (
         <div className="border rounded-sm p-6 text-center text-sm text-muted" style={{ borderColor: "#262626" }}>
-          No certificate found for "{query}". Check the number and try again.
+          No registration found for "{query}". Check the number and try again.
+        </div>
+      )}
+
+      {notIssued && (
+        <div className="border rounded-sm p-6 text-center text-sm text-muted" style={{ borderColor: "#262626" }}>
+          Your registration was found, but a certificate hasn't been issued yet for this number. Please check back after the event.
         </div>
       )}
 
@@ -102,4 +131,4 @@ function Detail({ label, value }) {
       <div className="font-bold text-sm text-black">{value}</div>
     </div>
   );
-      }
+    }
