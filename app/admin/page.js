@@ -387,12 +387,10 @@ export default function AdminPage() {
                           <Row label="Submitted" value={new Date(r.created_at).toLocaleString()} />
                         </div>
                       )}
-                      <div className="mt-3 pt-3 border-t" style={{ borderColor: "#E7E2D9" }}>
-                        <label className="field-label">Attach Certificate (participant can then download it using this same registration number)</label>
-                        <select className="field-input" defaultValue={r.certificate_id || ""} onChange={(e) => linkRegCertificate(r.id, e.target.value)}>
-                          <option value="">None</option>
-                          {certificates.map((c) => <option key={c.id} value={c.id}>{c.certificate_number} — {c.full_name}</option>)}
-                        </select>
+                      <div className="mt-3 pt-3 border-t grid sm:grid-cols-2 gap-3" style={{ borderColor: "#E7E2D9" }}>
+                        <div className="sm:col-span-2 text-[11px] text-muted">Every confirmed registration auto-generates its own certificate. Optionally add finish time / position below for this participant's certificate (e.g. for winners).</div>
+                        <TF label="Finish Time (optional)" value={r.finish_time} onBlur={(v) => updateRegistration(r.id, { finish_time: v })} />
+                        <TF label="Position (optional)" value={r.position} onBlur={(v) => updateRegistration(r.id, { position: v })} />
                       </div>
                     </div>
                   )}
@@ -787,4 +785,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-                                        }
+}
