@@ -28,11 +28,13 @@ export default function AdminPage() {
   const [founderSigFile, setFounderSigFile] = useState(null);
   const [team, setTeam] = useState([]);
   const [newSerial, setNewSerial] = useState("");
+  const [regEventFilter, setRegEventFilter] = useState("All");
   const [mediaList, setMediaList] = useState([]);
   const [mediaFilter, setMediaFilter] = useState("Pending");
   const [visits, setVisits] = useState([]);
   const [expandedReg, setExpandedReg] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [eventImages, setEventImages] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -47,7 +49,7 @@ export default function AdminPage() {
   }, []);
 
   const loadAll = async () => {
-    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }, { data: tm }, { data: md }] = await Promise.all([
+    const [{ data: ev }, { data: pr }, { data: sp }, { data: rg }, { data: ord }, { data: tm }, { data: md }, { data: ei }] = await Promise.all([
       supabase.from("events").select("*").order("event_date"),
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("sponsors").select("*").order("sort_order"),
@@ -55,8 +57,9 @@ export default function AdminPage() {
       supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: false }),
       supabase.from("team_members").select("*").order("sort_order"),
       supabase.from("athlete_media").select("*, certificates(certificate_number)").order("created_at", { ascending: false }),
+      supabase.from("event_images").select("*").order("sort_order"),
     ]);
-    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []); setTeam(tm || []); setMediaList(md || []);
+    setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []); setTeam(tm || []); setMediaList(md || []); setEventImages(ei || []);
     const { data: s } = await supabase.from("website_settings").select("value").eq("key", "upi_payment").maybeSingle();
     if (s?.value) setUpi(s.value);
     const { data: f } = await supabase.from("website_settings").select("value").eq("key", "footer_contact").maybeSingle();
@@ -106,19 +109,20 @@ export default function AdminPage() {
   const linkRegCertificate = async (id, certId) => { await supabase.from("event_registrations").update({ certificate_id: certId || null }).eq("id", id); loadAll(); };
 
   const addOfflineRegistration = async () => {
-    if (!newSerial.trim()) { alert("Please enter a serial number."); return; }
-    const code = `APX-${newSerial.trim()}`;
+    const targetEventId = regEventFilter !== "All" ? regEventFilter : events[0]?.id || null;
+    if (!targetEventId) { alert("Please select a specific event first (not \"All\") so numbering can start correctly for it."); return; }
+    const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code_for_event", { p_event_id: targetEventId });
+    if (codeError || !codeData) { alert("Could not generate the next serial number."); return; }
     const { error } = await supabase.from("event_registrations").insert({
-      registration_code: code,
-      event_id: events[0]?.id || null,
+      registration_code: codeData,
+      event_id: targetEventId,
       full_name: "New Offline Registrant",
       mobile: "",
       address: "",
       payment_method: "Offline",
       status: "Confirmed",
     });
-    if (error) { alert("That serial number is already used, or something went wrong: " + error.message); return; }
-    setNewSerial("");
+    if (error) { alert("Something went wrong: " + error.message); return; }
     loadAll();
   };
 
@@ -132,6 +136,19 @@ export default function AdminPage() {
   };
   const updateEvent = async (id, patch) => { await supabase.from("events").update(patch).eq("id", id); loadAll(); };
   const deleteEvent = async (id) => { await supabase.from("events").delete().eq("id", id); loadAll(); };
+
+  const addEventImage = async (eventId, file) => {
+    if (!file) return;
+    const count = eventImages.filter((i) => i.event_id === eventId).length;
+    if (count >= 10) { alert("Maximum 10 photos allowed per event."); return; }
+    const path = `event-${eventId}-${Date.now()}.${file.name.split(".").pop()}`;
+    const { error } = await supabase.storage.from("site-assets").upload(path, file);
+    if (error) { alert("Upload failed: " + error.message); return; }
+    const { data: pub } = supabase.storage.from("site-assets").getPublicUrl(path);
+    await supabase.from("event_images").insert({ event_id: eventId, image_url: pub.publicUrl, sort_order: count });
+    loadAll();
+  };
+  const deleteEventImage = async (id) => { await supabase.from("event_images").delete().eq("id", id); loadAll(); };
 
   const addProduct = async () => {
     const slug = `product-${Date.now()}`;
@@ -273,6 +290,23 @@ export default function AdminPage() {
                   <TF label="Date" type="date" value={e.event_date} onBlur={(v) => updateEvent(e.id, { event_date: v })} />
                   <TF label="Fee (₹)" type="number" value={e.fee} onBlur={(v) => updateEvent(e.id, { fee: Number(v) })} />
                 </div>
+                <div className="mb-3">
+                  <label className="field-label">Photos ({eventImages.filter((i) => i.event_id === e.id).length}/10)</label>
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 mb-2">
+                    {eventImages.filter((i) => i.event_id === e.id).map((img) => (
+                      <div key={img.id} className="relative aspect-square rounded-sm overflow-hidden border" style={{ borderColor: "#E7E2D9" }}>
+                        <img src={img.image_url} alt="" className="w-full h-full object-cover" />
+                        <button onClick={() => deleteEventImage(img.id)} className="absolute top-1 right-1 bg-black/60 rounded-full p-1"><Trash2 size={11} color="#fff"/></button>
+                      </div>
+                    ))}
+                  </div>
+                  {eventImages.filter((i) => i.event_id === e.id).length < 10 && (
+                    <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-sm py-3 text-xs cursor-pointer text-muted" style={{ borderColor: "#E7E2D9" }}>
+                      <Upload size={14}/> Add photo
+                      <input type="file" accept="image/*" className="hidden" onChange={(ev2) => addEventImage(e.id, ev2.target.files?.[0])} />
+                    </label>
+                  )}
+                </div>
                 <button onClick={() => deleteEvent(e.id)} className="text-xs font-bold flex items-center gap-1" style={{ color: "#B3271E" }}><Trash2 size={13}/> Delete</button>
               </div>
             ))}
@@ -335,13 +369,16 @@ export default function AdminPage() {
         <div>
           <div className="flex flex-wrap items-end gap-3 mb-5">
             <div>
-              <label className="field-label">Serial Number</label>
-              <input className="field-input" style={{ width: 140 }} value={newSerial} onChange={(e) => setNewSerial(e.target.value)} placeholder="e.g. 330" />
+              <label className="field-label">Filter by Event</label>
+              <select className="field-input" style={{ width: 240 }} value={regEventFilter} onChange={(e) => setRegEventFilter(e.target.value)}>
+                <option value="All">All Events</option>
+                {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
             </div>
             <button className="btn btn-primary" onClick={addOfflineRegistration}><Plus size={15}/> Add Offline Registration</button>
           </div>
           <div className="space-y-3">
-            {registrations.map((r) => {
+            {registrations.filter((r) => regEventFilter === "All" || r.event_id === regEventFilter).map((r) => {
               const open = expandedReg === r.id;
               return (
                 <div key={r.id} className="border rounded-sm p-4" style={{ borderColor: "#E7E2D9" }}>
@@ -397,7 +434,7 @@ export default function AdminPage() {
                 </div>
               );
             })}
-            {registrations.length === 0 && <p className="text-sm text-muted">No registrations yet.</p>}
+            {registrations.filter((r) => regEventFilter === "All" || r.event_id === regEventFilter).length === 0 && <p className="text-sm text-muted">No registrations for this event yet.</p>}
           </div>
         </div>
       )}
@@ -785,4 +822,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-}
+    }
