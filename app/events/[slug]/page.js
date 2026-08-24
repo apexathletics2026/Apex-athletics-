@@ -20,6 +20,13 @@ export default async function EventDetailPage({ params }) {
     .select("*", { count: "exact", head: true })
     .eq("event_id", e.id);
 
+  const { data: gallery } = await supabase
+    .from("event_images")
+    .select("*")
+    .eq("event_id", e.id)
+    .order("sort_order")
+    .limit(10);
+
   const open = e.status === "Registration Open";
   const rules = (e.rules || "").split("\n").filter(Boolean);
 
@@ -53,7 +60,20 @@ export default async function EventDetailPage({ params }) {
               </ul>
             </>
           )}
-          {e.prize_info && <><h3 className="font-black text-lg mb-2 text-ink">Prizes</h3><p className="text-sm leading-relaxed text-ink/80">{e.prize_info}</p></>}
+          {e.prize_info && <><h3 className="font-black text-lg mb-2 text-ink">Prizes</h3><p className="text-sm leading-relaxed text-ink/80 mb-8">{e.prize_info}</p></>}
+
+          {gallery && gallery.length > 0 && (
+            <>
+              <h3 className="font-black text-lg mb-3 text-ink">Gallery</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {gallery.map((img) => (
+                  <div key={img.id} className="aspect-square rounded-sm overflow-hidden">
+                    <img src={img.image_url} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div>
           <div className="border rounded-sm p-6 sticky top-24" style={{ borderColor: "#E7E2D9" }}>
@@ -70,4 +90,4 @@ export default async function EventDetailPage({ params }) {
       </div>
     </div>
   );
-    }
+}
