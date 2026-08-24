@@ -28,8 +28,17 @@ export async function POST(req) {
       const tempCode = txnid.replace(/^REG/, "");
       const mihpayid = data.mihpayid || "";
 
-      const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code");
-      const finalCode = !codeError && codeData ? codeData : tempCode;
+      const { data: pendingReg } = await supabase
+        .from("event_registrations")
+        .select("event_id")
+        .eq("registration_code", tempCode)
+        .maybeSingle();
+
+      let finalCode = tempCode;
+      if (pendingReg?.event_id) {
+        const { data: codeData, error: codeError } = await supabase.rpc("next_registration_code_for_event", { p_event_id: pendingReg.event_id });
+        if (!codeError && codeData) finalCode = codeData;
+      }
 
       await supabase
         .from("event_registrations")
@@ -43,4 +52,4 @@ export async function POST(req) {
   } catch (e) {
     return NextResponse.redirect(new URL(`/payment-failed`, req.url), 303);
   }
-                                }
+    }
