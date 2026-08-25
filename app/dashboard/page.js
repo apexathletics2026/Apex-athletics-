@@ -61,6 +61,12 @@ export default function Dashboard() {
     setUploading(false);
     if (error) { setUploadMsg("Something went wrong: " + error.message); return; }
 
+    fetch("/api/notify-media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ athleteName: user.user_metadata?.full_name || "Runner", mediaType, caption }),
+    }).catch(() => {});
+
     setUploadMsg("Submitted! Waiting for admin approval.");
     setCaption("");
     setFile(null);
@@ -143,4 +149,4 @@ function Stat({ label, value }) {
       <div className="text-xs uppercase font-bold text-muted">{label}</div>
     </div>
   );
-        }
+           }
