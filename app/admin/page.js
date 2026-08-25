@@ -56,7 +56,7 @@ export default function AdminPage() {
       supabase.from("event_registrations").select("*, events(name)").order("created_at", { ascending: false }),
       supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: false }),
       supabase.from("team_members").select("*").order("sort_order"),
-      supabase.from("athlete_media").select("*, certificates(certificate_number)").order("created_at", { ascending: false }),
+      supabase.from("athlete_media").select("*, certificates(certificate_number), media_comments(id)").order("created_at", { ascending: false }),
       supabase.from("event_images").select("*").order("sort_order"),
     ]);
     setEvents(ev || []); setProducts(pr || []); setSponsors(sp || []); setRegistrations(rg || []); setOrders(ord || []); setTeam(tm || []); setMediaList(md || []); setEventImages(ei || []);
@@ -623,6 +623,7 @@ export default function AdminPage() {
                   <TF label="Views" type="number" value={m.views} onBlur={(v) => updateMedia(m.id, { views: Number(v) })} />
                   <TF label="Likes" type="number" value={m.likes} onBlur={(v) => updateMedia(m.id, { likes: Number(v) })} />
                 </div>
+                <div className="text-xs text-muted mb-3">{(m.media_comments || []).length} comments</div>
                 <div className="mb-3">
                   <label className="field-label">Attach Certificate (optional)</label>
                   <select className="field-input" defaultValue={m.certificate_id || ""} onChange={(e) => linkCertificate(m.id, e.target.value)}>
@@ -822,4 +823,4 @@ function ProductPhotoUpload({ productId, onUploaded }) {
       {file && <button disabled={uploading} onClick={upload} className="btn btn-primary !py-2 !px-3 !text-xs">{uploading ? "..." : "Upload"}</button>}
     </div>
   );
-    }
+        }
